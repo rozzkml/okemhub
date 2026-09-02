@@ -84,7 +84,7 @@ class OkemPDFEditor {
     });
 
     // Tools
-    document.querySelectorAll(".tool-btn").forEach((btn) => {
+    document.querySelectorAll(".ribbon-tab").forEach((btn) => {
       btn.addEventListener("click", () => this.setTool(btn.dataset.tool));
     });
 
@@ -292,7 +292,7 @@ class OkemPDFEditor {
   // ─── Tool Management ───────────────────────────────
   setTool(tool) {
     this.tool = tool;
-    document.querySelectorAll(".tool-btn").forEach((btn) => {
+    document.querySelectorAll(".ribbon-tab").forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.tool === tool);
     });
     this.updateToolOptions();
@@ -317,60 +317,92 @@ class OkemPDFEditor {
     const container = this.els["tool-options"];
     const t = this.tool;
 
+    const section = (label, html) =>
+      `<div class="opt-section"><span class="opt-section-label">${label}</span>${html}</div>`;
+
     if (t === "text") {
       container.innerHTML = `
-        <label>Font <select id="opt-font">
-          <option value="Helvetica">Helvetica</option>
-          <option value="Times New Roman">Times New Roman</option>
-          <option value="Courier">Courier</option>
-          <option value="Arial">Arial</option>
-          <option value="Georgia">Georgia</option>
-          <option value="Verdana">Verdana</option>
-        </select></label>
-        <label>Size <input type="range" id="opt-size" min="8" max="72" value="16" />
-        <span class="opt-val" id="opt-size-val">16</span></label>
-        <label>Color <input type="color" id="opt-color" value="#000000" /></label>
-        <label><input type="checkbox" id="opt-bold" /> <b>B</b></label>
-        <label><input type="checkbox" id="opt-italic" /> <i>I</i></label>
+        ${section("Font", `
+          <select id="opt-font">
+            <option value="Helvetica">Helvetica</option>
+            <option value="Times New Roman">Times New Roman</option>
+            <option value="Courier">Courier</option>
+            <option value="Arial">Arial</option>
+            <option value="Georgia">Georgia</option>
+            <option value="Verdana">Verdana</option>
+          </select>
+        `)}
+        ${section("Size", `
+          <input type="range" id="opt-size" min="8" max="72" value="16" />
+          <span class="opt-val" id="opt-size-val">16</span>
+        `)}
+        ${section("Color", `
+          <input type="color" id="opt-color" value="#000000" />
+        `)}
+        ${section("Style", `
+          <label><input type="checkbox" id="opt-bold" /> <b>B</b></label>
+          <label><input type="checkbox" id="opt-italic" /> <i>I</i></label>
+        `)}
       `;
       container.querySelector("#opt-size").addEventListener("input", (e) => {
         container.querySelector("#opt-size-val").textContent = e.target.value;
       });
     } else if (t === "draw") {
       container.innerHTML = `
-        <label>Color <input type="color" id="opt-color" value="#000000" /></label>
-        <label>Width <input type="range" id="opt-width" min="1" max="20" value="3" />
-        <span class="opt-val" id="opt-width-val">3</span></label>
+        ${section("Color", `
+          <input type="color" id="opt-color" value="#000000" />
+        `)}
+        ${section("Brush", `
+          <input type="range" id="opt-width" min="1" max="20" value="3" />
+          <span class="opt-val" id="opt-width-val">3</span>
+        `)}
       `;
       container.querySelector("#opt-width").addEventListener("input", (e) => {
         container.querySelector("#opt-width-val").textContent = e.target.value;
       });
     } else if (t === "highlight") {
       container.innerHTML = `
-        <label>Color <input type="color" id="opt-color" value="#ffeb3b" /></label>
+        ${section("Color", `
+          <input type="color" id="opt-color" value="#ffeb3b" />
+        `)}
+        <span class="opt-hint">Click & drag to highlight an area</span>
       `;
     } else if (t === "shape") {
       container.innerHTML = `
-        <label>Shape <select id="opt-shape">
-          <option value="rect">Rectangle</option>
-          <option value="ellipse">Ellipse</option>
-          <option value="line">Line</option>
-          <option value="arrow">Arrow</option>
-        </select></label>
-        <label>Color <input type="color" id="opt-color" value="#000000" /></label>
-        <label>Width <input type="range" id="opt-width" min="1" max="10" value="2" />
-        <span class="opt-val" id="opt-width-val">2</span></label>
-        <label><input type="checkbox" id="opt-fill" /> Fill</label>
+        ${section("Shape", `
+          <select id="opt-shape">
+            <option value="rect">Rectangle</option>
+            <option value="ellipse">Ellipse</option>
+            <option value="line">Line</option>
+            <option value="arrow">Arrow</option>
+          </select>
+        `)}
+        ${section("Color", `
+          <input type="color" id="opt-color" value="#000000" />
+        `)}
+        ${section("Stroke", `
+          <input type="range" id="opt-width" min="1" max="10" value="2" />
+          <span class="opt-val" id="opt-width-val">2</span>
+        `)}
+        ${section("Fill", `
+          <label><input type="checkbox" id="opt-fill" /> Fill</label>
+        `)}
       `;
       container.querySelector("#opt-width").addEventListener("input", (e) => {
         container.querySelector("#opt-width-val").textContent = e.target.value;
       });
     } else if (t === "whiteout") {
-      container.innerHTML = `<label style="color:var(--muted)">Click & drag to cover area</label>`;
-    } else if (t === "sign" || t === "link" || t === "note") {
-      container.innerHTML = "";
+      container.innerHTML = `<span class="opt-hint">Click & drag to cover an area with white</span>`;
+    } else if (t === "sign") {
+      container.innerHTML = `<span class="opt-hint">Click on the canvas to create a signature</span>`;
+    } else if (t === "link") {
+      container.innerHTML = `<span class="opt-hint">Click on the canvas to add a link</span>`;
+    } else if (t === "note") {
+      container.innerHTML = `<span class="opt-hint">Click on the canvas to add a sticky note</span>`;
     } else if (t === "select") {
-      container.innerHTML = `<label style="color:var(--muted)">Click annotation to select, Delete to remove</label>`;
+      container.innerHTML = `<span class="opt-hint">Click annotation to select · Drag to move · Delete to remove</span>`;
+    } else if (t === "image") {
+      container.innerHTML = `<span class="opt-hint">Select an image file to add to the PDF</span>`;
     } else {
       container.innerHTML = "";
     }
@@ -931,16 +963,17 @@ class OkemPDFEditor {
     const startY = e.clientY;
     const origX = ann.x || 0;
     const origY = ann.y || 0;
+    const origPoints = ann.points ? ann.points.map((p) => ({ ...p })) : null;
 
     const onMove = (ev) => {
       const dx = (ev.clientX - startX) / this.zoom;
       const dy = (ev.clientY - startY) / this.zoom;
       ann.x = origX + dx;
       ann.y = origY + dy;
-      if (ann.points) {
-        ann.points = ann.points.map((p) => ({
-          x: p.x + dx / this.zoom * 0 + dx,
-          y: p.y + dy / this.zoom * 0 + dy,
+      if (origPoints) {
+        ann.points = origPoints.map((p) => ({
+          x: p.x + dx,
+          y: p.y + dy,
         }));
       }
       this.renderAnnotations();

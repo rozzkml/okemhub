@@ -91,33 +91,35 @@ body {
   overflow: hidden;
 }
 
-/* Toolbar */
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 12px;
+/* Ribbon Toolbar (Word/Excel style) */
+.ribbon {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  overflow-x: auto;
   flex-shrink: 0;
 }
 
-.tool-group {
+.ribbon-tabs {
   display: flex;
+  align-items: center;
+  justify-content: center;
   gap: 2px;
-  padding: 0 6px;
-  border-right: 1px solid var(--border);
+  padding: 6px 16px;
+  flex-wrap: wrap;
 }
 
-.tool-group:last-child { border-right: none; }
+.ribbon-divider {
+  width: 1px;
+  height: 28px;
+  background: var(--border);
+  margin: 0 4px;
+}
 
-.tool-btn {
+.ribbon-tab {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: 6px 10px;
+  gap: 3px;
+  padding: 6px 12px;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 8px;
@@ -129,35 +131,38 @@ body {
   transition: all 0.15s;
 }
 
-.tool-btn:hover {
+.ribbon-tab:hover {
   color: var(--text);
   background: var(--surface-2);
+  border-color: var(--border);
 }
 
-.tool-btn.active {
+.ribbon-tab.active {
   color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
-.tool-options {
-  margin-left: auto;
-  border-right: none;
+.ribbon-options {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 12px;
+  padding: 6px 16px;
+  border-top: 1px solid var(--border);
+  min-height: 36px;
   flex-wrap: wrap;
 }
 
-.tool-options label {
+.ribbon-options label {
   font-size: 0.78rem;
   color: var(--muted);
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
-.tool-options input[type="color"] {
+.ribbon-options input[type="color"] {
   width: 28px;
   height: 28px;
   border: 1px solid var(--border);
@@ -167,25 +172,65 @@ body {
   padding: 2px;
 }
 
-.tool-options input[type="range"] {
+.ribbon-options input[type="range"] {
   width: 80px;
   accent-color: var(--accent);
 }
 
-.tool-options select {
+.ribbon-options select {
   background: var(--surface-2);
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 6px;
-  padding: 4px 8px;
-  font-size: 0.78rem;
+  padding: 5px 10px;
+  font-size: 0.82rem;
   font-family: inherit;
+  cursor: pointer;
 }
 
-.tool-options .opt-val {
+.ribbon-options select:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.ribbon-options .opt-val {
   font-size: 0.72rem;
   color: var(--muted);
-  min-width: 20px;
+  min-width: 24px;
+  text-align: center;
+}
+
+.ribbon-options .opt-hint {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.opt-section {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border-right: 1px solid var(--border);
+}
+
+.opt-section:last-child {
+  border-right: none;
+}
+
+.opt-section-label {
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.opt-section label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
 }
 
 /* Canvas Area */
@@ -607,10 +652,11 @@ body {
 /* Responsive */
 @media (max-width: 768px) {
   .sidebar { display: none; }
-  .toolbar { gap: 2px; padding: 4px 8px; }
-  .tool-btn { padding: 4px 6px; font-size: 0.65rem; }
-  .tool-btn span { display: none; }
-  .tool-options { gap: 4px; }
+  .ribbon-tabs { gap: 1px; padding: 4px 8px; }
+  .ribbon-tab { padding: 4px 8px; font-size: 0.65rem; }
+  .ribbon-tab span { display: none; }
+  .ribbon-divider { height: 22px; margin: 0 2px; }
+  .ribbon-options { gap: 6px; padding: 4px 8px; }
   .bottom-bar { padding: 6px 8px; gap: 6px; }
   .btn { padding: 6px 10px; font-size: 0.78rem; }
   .canvas-area { padding: 10px; }
@@ -618,5 +664,5 @@ body {
 
 @media (max-width: 480px) {
   .bottom-center { display: none; }
-  .tool-options label span { display: none; }
+  .ribbon-options label span:not(.opt-val) { display: none; }
 }

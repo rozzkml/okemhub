@@ -36,53 +36,56 @@
 
     <!-- Editor Screen -->
     <div id="editor-screen" class="editor-screen hidden">
-      <!-- Toolbar -->
-      <div class="toolbar" id="toolbar">
-        <div class="tool-group">
-          <button class="tool-btn" data-tool="select" title="Select (V)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg>
+      <!-- Toolbar (Ribbon style) -->
+      <div class="ribbon" id="toolbar">
+        <!-- Main Tools Row -->
+        <div class="ribbon-tabs">
+          <button class="ribbon-tab" data-tool="select" title="Select (V)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg>
             <span>Select</span>
           </button>
-          <button class="tool-btn active" data-tool="text" title="Add Text (T)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg>
+          <div class="ribbon-divider"></div>
+          <button class="ribbon-tab active" data-tool="text" title="Add Text (T)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg>
             <span>Text</span>
           </button>
-          <button class="tool-btn" data-tool="image" title="Add Image (I)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+          <button class="ribbon-tab" data-tool="image" title="Add Image (I)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
             <span>Image</span>
           </button>
-          <button class="tool-btn" data-tool="draw" title="Freehand Draw (D)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/></svg>
+          <button class="ribbon-tab" data-tool="draw" title="Freehand Draw (D)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.83 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
             <span>Draw</span>
           </button>
-        </div>
-        <div class="tool-group">
-          <button class="tool-btn" data-tool="highlight" title="Highlight (H)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l-6 6v3h9l3-3"/><path d="M22 12l-4.6 4.6a2 2 0 01-2.8 0l-5.2-5.2a2 2 0 010-2.8L14 4"/></svg>
+          <div class="ribbon-divider"></div>
+          <button class="ribbon-tab" data-tool="highlight" title="Highlight (H)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
             <span>Highlight</span>
           </button>
-          <button class="tool-btn" data-tool="whiteout" title="Whiteout (W)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" fill="currentColor" opacity="0.3"/></svg>
+          <button class="ribbon-tab" data-tool="whiteout" title="Whiteout (W)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="3" x2="21" y2="21" opacity="0.4"/></svg>
             <span>Whiteout</span>
           </button>
-          <button class="tool-btn" data-tool="shape" title="Shapes (S)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><circle cx="17.5" cy="17.5" r="4.5"/><line x1="14" y1="4" x2="21" y2="11"/></svg>
+          <div class="ribbon-divider"></div>
+          <button class="ribbon-tab" data-tool="shape" title="Shapes (S)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><circle cx="17.5" cy="17.5" r="4.5"/><line x1="14" y1="4" x2="21" y2="11"/></svg>
             <span>Shapes</span>
           </button>
-          <button class="tool-btn" data-tool="sign" title="Signature (G)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17c3-3 5-8 9-8s3 5 6 5 3-3 3-3"/></svg>
+          <button class="ribbon-tab" data-tool="sign" title="Signature (G)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17c3-3 5-8 9-8s3 5 6 5 3-3 3-3"/></svg>
             <span>Sign</span>
           </button>
-          <button class="tool-btn" data-tool="link" title="Add Link (L)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+          <button class="ribbon-tab" data-tool="link" title="Add Link (L)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
             <span>Link</span>
           </button>
-          <button class="tool-btn" data-tool="note" title="Sticky Note (N)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15.5 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V8.5L15.5 3z"/><polyline points="14,3 14,8 21,8"/></svg>
+          <button class="ribbon-tab" data-tool="note" title="Sticky Note (N)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15.5 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V8.5L15.5 3z"/><polyline points="14,3 14,8 21,8"/></svg>
             <span>Note</span>
           </button>
         </div>
-        <div class="tool-group tool-options" id="tool-options">
+        <!-- Sub-options Row (contextual) -->
+        <div class="ribbon-options" id="tool-options">
           <!-- Dynamic options injected by JS -->
         </div>
       </div>
