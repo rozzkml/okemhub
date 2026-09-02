@@ -22,37 +22,13 @@
   if (yearEl) yearEl.textContent = new Date().getFullYear();
 })();
 
-// Project cards — sourced from the rozzkml GitHub org
+// Project cards — only the okem repo (per brief)
 const projects = [
   {
     name: "okem",
     tag: "Free functions",
     desc: "A collection of small, free, single-purpose tools that run without accounts or installs.",
     url: "https://github.com/rozzkml/okem",
-  },
-  {
-    name: "converter",
-    tag: "Browser tool",
-    desc: "Convert video, audio, and images entirely in your browser using FFmpeg.wasm. No uploads.",
-    url: "https://github.com/rozzkml/converter",
-  },
-  {
-    name: "gobalancer",
-    tag: "AI gateway",
-    desc: "A FastAPI AI gateway with provider routing, health checks, and edge retry logic.",
-    url: "https://github.com/rozzkml/gobalancer",
-  },
-  {
-    name: "proxygenerator",
-    tag: "Tooling",
-    desc: "Generate and manage proxy configs from a simple CLI and API surface.",
-    url: "https://github.com/rozzkml/proxygenerator",
-  },
-  {
-    name: "herm",
-    tag: "Open source",
-    desc: "Misc utilities and experiments from the rozzkml workspace.",
-    url: "https://github.com/rozzkml/herm",
   },
 ];
 
