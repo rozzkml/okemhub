@@ -3,44 +3,33 @@
 
 /* global pdfjsLib, PDFLib */
 
-// Configure PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
 class OkemPDFEditor {
   constructor() {
-    // State
-    this.pdfDoc = null;        // pdf.js doc
-    this.pdfBytes = null;      // raw bytes for pdf-lib
-    this.pages = [];           // { viewport, width, height }
+    this.pdfDoc = null;
+    this.pdfBytes = null;
+    this.pages = [];
     this.currentPage = 1;
     this.totalPages = 0;
     this.zoom = 1.5;
     this.tool = "text";
-
-    // Annotations per page: { pageNum: [annotation, ...] }
     this.annotations = {};
     this.selectedAnnotation = null;
-
-    // History
     this.undoStack = [];
     this.redoStack = [];
-
-    // Drawing state
     this.isDrawing = false;
     this.drawStart = null;
     this.currentPath = [];
     this.signDataUrl = null;
     this.linkPosition = null;
     this.notePosition = null;
-
-    // DOM refs
+    this.textInputActive = false; // track if inline text input is open
     this.els = {};
-
     this.init();
   }
 
-  // ─── Init ──────────────────────────────────────────
   init() {
     this.cacheDom();
     this.bindEvents();
@@ -83,23 +72,24 @@ class OkemPDFEditor {
       if (e.dataTransfer.files[0]) this.handleFile(e.dataTransfer.files[0]);
     });
 
-    // Tools
+    // Tool buttons
     document.querySelectorAll(".ribbon-tab").forEach((btn) => {
-      btn.addEventListener("click", () => this.setTool(btn.dataset.tool));
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        this.setTool(btn.dataset.tool);
+      });
     });
 
-    // Canvas events
+    // Canvas mouse events
     const overlay = els["overlay-canvas"];
     overlay.addEventListener("mousedown", (e) => this.onMouseDown(e));
     overlay.addEventListener("mousemove", (e) => this.onMouseMove(e));
     overlay.addEventListener("mouseup", (e) => this.onMouseUp(e));
     overlay.addEventListener("mouseleave", (e) => this.onMouseUp(e));
 
-    // Touch support — only prevent default when actively editing
+    // Touch support
     overlay.addEventListener("touchstart", (e) => {
-      if (this.tool !== "select") {
-        e.preventDefault();
-      }
+      if (this.tool !== "select") e.preventDefault();
       const t = e.touches[0];
       this.onMouseDown({ clientX: t.clientX, clientY: t.clientY, target: overlay });
     }, { passive: false });
@@ -110,21 +100,16 @@ class OkemPDFEditor {
         this.onMouseMove({ clientX: t.clientX, clientY: t.clientY, target: overlay });
       }
     }, { passive: false });
-    overlay.addEventListener("touchend", (e) => {
-      this.onMouseUp({});
-    });
+    overlay.addEventListener("touchend", () => this.onMouseUp({}));
 
     // Zoom
     els["btn-zoom-in"].addEventListener("click", () => this.setZoom(this.zoom + 0.25));
     els["btn-zoom-out"].addEventListener("click", () => this.setZoom(this.zoom - 0.25));
     els["btn-zoom-fit"].addEventListener("click", () => this.fitToWidth());
-
-    // Ctrl+Scroll to zoom
     els["canvas-area"].addEventListener("wheel", (e) => {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
-        const delta = e.deltaY > 0 ? -0.15 : 0.15;
-        this.setZoom(this.zoom + delta);
+        this.setZoom(this.zoom + (e.deltaY > 0 ? -0.15 : 0.15));
       }
     }, { passive: false });
 
@@ -174,8 +159,8 @@ class OkemPDFEditor {
     els["note-cancel"].addEventListener("click", () => this.closeModal("note-modal"));
     els["note-apply"].addEventListener("click", () => this.applyNote());
 
-    // Keyboard shortcuts
-    document.addEventListener("keydown", (e) => this.onKeyDown(e));
+    // Keyboard — use capture phase to intercept before anything else
+    document.addEventListener("keydown", (e) => this.onKeyDown(e), true);
   }
 
   // ─── File Handling ─────────────────────────────────
@@ -193,17 +178,14 @@ class OkemPDFEditor {
     this.redoStack = [];
     this.currentPage = 1;
 
-    // Pre-load page info
     for (let i = 1; i <= this.totalPages; i++) {
       const page = await this.pdfDoc.getPage(i);
       const vp = page.getViewport({ scale: 1 });
       this.pages.push({ width: vp.width, height: vp.height });
     }
 
-    // Switch to editor
     this.els["upload-screen"].classList.add("hidden");
     this.els["editor-screen"].classList.remove("hidden");
-
     this.renderThumbnails();
     this.fitToWidth();
     this.updateUI();
@@ -231,20 +213,16 @@ class OkemPDFEditor {
     const ctx = canvas.getContext("2d");
     canvas.width = viewport.width;
     canvas.height = viewport.height;
-
     await page.render({ canvasContext: ctx, viewport }).promise;
 
-    // Overlay canvas
     const overlay = this.els["overlay-canvas"];
     overlay.width = viewport.width;
     overlay.height = viewport.height;
 
-    // Annotation layer
     const layer = this.els["annotation-layer"];
     layer.style.width = viewport.width + "px";
     layer.style.height = viewport.height + "px";
 
-    // Re-render annotations
     this.renderAnnotations();
     this.updateUI();
   }
@@ -256,18 +234,15 @@ class OkemPDFEditor {
       const div = document.createElement("div");
       div.className = "page-thumb" + (i === this.currentPage ? " active" : "");
       div.dataset.page = i;
-
       const canvas = document.createElement("canvas");
       const page = await this.pdfDoc.getPage(i);
       const vp = page.getViewport({ scale: 0.2 });
       canvas.width = vp.width;
       canvas.height = vp.height;
       await page.render({ canvasContext: canvas.getContext("2d"), viewport: vp }).promise;
-
       const num = document.createElement("span");
       num.className = "page-thumb-num";
       num.textContent = i;
-
       div.appendChild(canvas);
       div.appendChild(num);
       div.addEventListener("click", () => this.goToPage(i));
@@ -279,8 +254,6 @@ class OkemPDFEditor {
     if (n < 1 || n > this.totalPages) return;
     this.currentPage = n;
     await this.renderPage();
-
-    // Update thumbnail selection
     document.querySelectorAll(".page-thumb").forEach((t) => {
       t.classList.toggle("active", parseInt(t.dataset.page) === n);
     });
@@ -296,8 +269,7 @@ class OkemPDFEditor {
     const area = this.els["canvas-area"];
     const page = this.pages[this.currentPage - 1];
     if (!page) return;
-    const available = area.clientWidth - 60;
-    this.zoom = available / page.width;
+    this.zoom = (area.clientWidth - 60) / page.width;
     this.renderPage();
     this.els["zoom-level"].textContent = Math.round(this.zoom * 100) + "%";
   }
@@ -311,127 +283,99 @@ class OkemPDFEditor {
     this.updateToolOptions();
     this.deselectAnnotation();
 
-    // Update cursor
-    const overlay = this.els["overlay-canvas"];
     const cursors = {
       select: "default", text: "text", image: "copy", draw: "crosshair",
       highlight: "crosshair", whiteout: "crosshair", shape: "crosshair",
       sign: "crosshair", link: "crosshair", note: "crosshair",
     };
-    overlay.style.cursor = cursors[tool] || "crosshair";
+    this.els["overlay-canvas"].style.cursor = cursors[tool] || "crosshair";
 
-    // Trigger image upload if image tool
     if (tool === "image") {
       this.els["image-input"].click();
     }
   }
 
   updateToolOptions() {
-    const container = this.els["tool-options"];
+    const c = this.els["tool-options"];
     const t = this.tool;
-
-    const section = (label, html) =>
+    const sec = (label, html) =>
       `<div class="opt-section"><span class="opt-section-label">${label}</span>${html}</div>`;
 
     if (t === "text") {
-      container.innerHTML = `
-        ${section("Font", `
-          <select id="opt-font">
-            <option value="Helvetica">Helvetica</option>
-            <option value="Times New Roman">Times New Roman</option>
-            <option value="Courier">Courier</option>
-            <option value="Arial">Arial</option>
-            <option value="Georgia">Georgia</option>
-            <option value="Verdana">Verdana</option>
-          </select>
-        `)}
-        ${section("Size", `
-          <input type="range" id="opt-size" min="8" max="72" value="16" />
-          <span class="opt-val" id="opt-size-val">16</span>
-        `)}
-        ${section("Color", `
-          <input type="color" id="opt-color" value="#000000" />
-        `)}
-        ${section("Style", `
-          <label><input type="checkbox" id="opt-bold" /> <b>B</b></label>
-          <label><input type="checkbox" id="opt-italic" /> <i>I</i></label>
-        `)}
+      c.innerHTML = `
+        ${sec("Font", `<select id="opt-font">
+          <option value="Helvetica">Helvetica</option>
+          <option value="Times New Roman">Times New Roman</option>
+          <option value="Courier">Courier</option>
+          <option value="Arial">Arial</option>
+          <option value="Georgia">Georgia</option>
+          <option value="Verdana">Verdana</option>
+        </select>`)}
+        ${sec("Size", `<input type="range" id="opt-size" min="8" max="72" value="16" />
+          <span class="opt-val" id="opt-size-val">16</span>`)}
+        ${sec("Color", `<input type="color" id="opt-color" value="#000000" />`)}
+        ${sec("Style", `<label><input type="checkbox" id="opt-bold" /> <b>B</b></label>
+          <label><input type="checkbox" id="opt-italic" /> <i>I</i></label>`)}
       `;
-      container.querySelector("#opt-size").addEventListener("input", (e) => {
-        container.querySelector("#opt-size-val").textContent = e.target.value;
+      c.querySelector("#opt-size").addEventListener("input", (e) => {
+        c.querySelector("#opt-size-val").textContent = e.target.value;
       });
     } else if (t === "draw") {
-      container.innerHTML = `
-        ${section("Color", `
-          <input type="color" id="opt-color" value="#000000" />
-        `)}
-        ${section("Brush", `
-          <input type="range" id="opt-width" min="1" max="20" value="3" />
-          <span class="opt-val" id="opt-width-val">3</span>
-        `)}
+      c.innerHTML = `
+        ${sec("Color", `<input type="color" id="opt-color" value="#000000" />`)}
+        ${sec("Brush", `<input type="range" id="opt-width" min="1" max="20" value="3" />
+          <span class="opt-val" id="opt-width-val">3</span>`)}
       `;
-      container.querySelector("#opt-width").addEventListener("input", (e) => {
-        container.querySelector("#opt-width-val").textContent = e.target.value;
+      c.querySelector("#opt-width").addEventListener("input", (e) => {
+        c.querySelector("#opt-width-val").textContent = e.target.value;
       });
     } else if (t === "highlight") {
-      container.innerHTML = `
-        ${section("Color", `
-          <input type="color" id="opt-color" value="#ffeb3b" />
-        `)}
-        <span class="opt-hint">Click & drag to highlight an area</span>
-      `;
+      c.innerHTML = `${sec("Color", `<input type="color" id="opt-color" value="#ffeb3b" />`)}
+        <span class="opt-hint">Click & drag to highlight an area</span>`;
     } else if (t === "shape") {
-      container.innerHTML = `
-        ${section("Shape", `
-          <select id="opt-shape">
-            <option value="rect">Rectangle</option>
-            <option value="ellipse">Ellipse</option>
-            <option value="line">Line</option>
-            <option value="arrow">Arrow</option>
-          </select>
-        `)}
-        ${section("Color", `
-          <input type="color" id="opt-color" value="#000000" />
-        `)}
-        ${section("Stroke", `
-          <input type="range" id="opt-width" min="1" max="10" value="2" />
-          <span class="opt-val" id="opt-width-val">2</span>
-        `)}
-        ${section("Fill", `
-          <label><input type="checkbox" id="opt-fill" /> Fill</label>
-        `)}
+      c.innerHTML = `
+        ${sec("Shape", `<select id="opt-shape">
+          <option value="rect">Rectangle</option>
+          <option value="ellipse">Ellipse</option>
+          <option value="line">Line</option>
+          <option value="arrow">Arrow</option>
+        </select>`)}
+        ${sec("Color", `<input type="color" id="opt-color" value="#000000" />`)}
+        ${sec("Stroke", `<input type="range" id="opt-width" min="1" max="10" value="2" />
+          <span class="opt-val" id="opt-width-val">2</span>`)}
+        ${sec("Fill", `<label><input type="checkbox" id="opt-fill" /> Fill</label>`)}
       `;
-      container.querySelector("#opt-width").addEventListener("input", (e) => {
-        container.querySelector("#opt-width-val").textContent = e.target.value;
+      c.querySelector("#opt-width").addEventListener("input", (e) => {
+        c.querySelector("#opt-width-val").textContent = e.target.value;
       });
     } else if (t === "whiteout") {
-      container.innerHTML = `<span class="opt-hint">Click & drag to cover an area with white</span>`;
+      c.innerHTML = `<span class="opt-hint">Click & drag to cover an area with white</span>`;
     } else if (t === "sign") {
-      container.innerHTML = `<span class="opt-hint">Click on the canvas to create a signature</span>`;
+      c.innerHTML = `<span class="opt-hint">Click on the canvas to create a signature</span>`;
     } else if (t === "link") {
-      container.innerHTML = `<span class="opt-hint">Click on the canvas to add a link</span>`;
+      c.innerHTML = `<span class="opt-hint">Click on the canvas to add a link</span>`;
     } else if (t === "note") {
-      container.innerHTML = `<span class="opt-hint">Click on the canvas to add a sticky note</span>`;
+      c.innerHTML = `<span class="opt-hint">Click on the canvas to add a sticky note</span>`;
     } else if (t === "select") {
-      container.innerHTML = `<span class="opt-hint">Click annotation to select · Drag to move · Delete to remove</span>`;
+      c.innerHTML = `<span class="opt-hint">Click annotation to select · Drag to move · Delete to remove</span>`;
     } else if (t === "image") {
-      container.innerHTML = `<span class="opt-hint">Select an image file to add to the PDF</span>`;
+      c.innerHTML = `<span class="opt-hint">Select an image file to add to the PDF</span>`;
     } else {
-      container.innerHTML = "";
+      c.innerHTML = "";
     }
   }
 
   getToolOptions() {
     const opts = {};
-    const color = document.getElementById("opt-color");
-    const size = document.getElementById("opt-size");
-    const font = document.getElementById("opt-font");
-    const width = document.getElementById("opt-width");
-    const shape = document.getElementById("opt-shape");
-    const bold = document.getElementById("opt-bold");
-    const italic = document.getElementById("opt-italic");
-    const fill = document.getElementById("opt-fill");
-
+    const el = (id) => document.getElementById(id);
+    const color = el("opt-color");
+    const size = el("opt-size");
+    const font = el("opt-font");
+    const width = el("opt-width");
+    const shape = el("opt-shape");
+    const bold = el("opt-bold");
+    const italic = el("opt-italic");
+    const fill = el("opt-fill");
     if (color) opts.color = color.value;
     if (size) opts.fontSize = parseInt(size.value);
     if (font) opts.font = font.value;
@@ -460,38 +404,31 @@ class OkemPDFEditor {
       case "select":
         this.handleSelectDown(pos);
         break;
-
       case "text":
         this.createTextInput(pos, opts);
         break;
-
       case "draw":
         this.isDrawing = true;
         this.currentPath = [pos];
         break;
-
       case "highlight":
       case "whiteout":
         this.isDrawing = true;
         this.drawStart = pos;
         break;
-
       case "shape":
         this.isDrawing = true;
         this.drawStart = pos;
         break;
-
       case "sign":
         this.openModal("sign-modal");
         this.initSignCanvas();
         break;
-
       case "link":
         this.linkPosition = pos;
         this.openModal("link-modal");
         this.els["link-url"].value = "";
         break;
-
       case "note":
         this.notePosition = pos;
         this.openModal("note-modal");
@@ -510,7 +447,6 @@ class OkemPDFEditor {
       this.currentPath.push(pos);
       ctx.clearRect(0, 0, overlay.width, overlay.height);
       this.drawTempAnnotations(ctx);
-      // Draw current stroke
       const opts = this.getToolOptions();
       ctx.strokeStyle = opts.color || "#000";
       ctx.lineWidth = (opts.lineWidth || 3) * this.zoom;
@@ -520,8 +456,7 @@ class OkemPDFEditor {
       const p0 = this.currentPath[0];
       ctx.moveTo(p0.x * this.zoom, p0.y * this.zoom);
       for (let i = 1; i < this.currentPath.length; i++) {
-        const p = this.currentPath[i];
-        ctx.lineTo(p.x * this.zoom, p.y * this.zoom);
+        ctx.lineTo(this.currentPath[i].x * this.zoom, this.currentPath[i].y * this.zoom);
       }
       ctx.stroke();
     } else if (this.tool === "highlight" || this.tool === "whiteout" || this.tool === "shape") {
@@ -534,24 +469,20 @@ class OkemPDFEditor {
   onMouseUp(e) {
     if (!this.isDrawing) return;
     this.isDrawing = false;
-
     const pos = e.clientX ? this.getCanvasPos(e) : this.drawStart;
     const opts = this.getToolOptions();
 
     if (this.tool === "draw" && this.currentPath.length > 1) {
       this.addAnnotation({
-        type: "draw",
-        page: this.currentPage,
+        type: "draw", page: this.currentPage,
         points: [...this.currentPath],
-        color: opts.color || "#000",
-        lineWidth: opts.lineWidth || 3,
+        color: opts.color || "#000", lineWidth: opts.lineWidth || 3,
       });
     } else if (this.tool === "highlight" && this.drawStart && pos) {
       const r = this.normalizeRect(this.drawStart, pos);
       if (r.w > 2 && r.h > 2) {
         this.addAnnotation({
-          type: "highlight",
-          page: this.currentPage,
+          type: "highlight", page: this.currentPage,
           x: r.x, y: r.y, w: r.w, h: r.h,
           color: opts.color || "#ffeb3b",
         });
@@ -560,8 +491,7 @@ class OkemPDFEditor {
       const r = this.normalizeRect(this.drawStart, pos);
       if (r.w > 2 && r.h > 2) {
         this.addAnnotation({
-          type: "whiteout",
-          page: this.currentPage,
+          type: "whiteout", page: this.currentPage,
           x: r.x, y: r.y, w: r.w, h: r.h,
         });
       }
@@ -569,17 +499,14 @@ class OkemPDFEditor {
       const r = this.normalizeRect(this.drawStart, pos);
       if (r.w > 2 || r.h > 2) {
         this.addAnnotation({
-          type: "shape",
-          page: this.currentPage,
+          type: "shape", page: this.currentPage,
           shapeType: opts.shapeType || "rect",
           x: r.x, y: r.y, w: r.w, h: r.h,
           color: opts.color || "#000",
           lineWidth: opts.lineWidth || 2,
           fill: opts.fill || false,
-          startX: this.drawStart.x,
-          startY: this.drawStart.y,
-          endX: pos.x,
-          endY: pos.y,
+          startX: this.drawStart.x, startY: this.drawStart.y,
+          endX: pos.x, endY: pos.y,
         });
       }
     }
@@ -591,10 +518,8 @@ class OkemPDFEditor {
 
   normalizeRect(a, b) {
     return {
-      x: Math.min(a.x, b.x),
-      y: Math.min(a.y, b.y),
-      w: Math.abs(b.x - a.x),
-      h: Math.abs(b.y - a.y),
+      x: Math.min(a.x, b.x), y: Math.min(a.y, b.y),
+      w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y),
     };
   }
 
@@ -613,7 +538,6 @@ class OkemPDFEditor {
       ctx.strokeStyle = opts.color || "#000";
       ctx.lineWidth = (opts.lineWidth || 2) * z;
       ctx.fillStyle = (opts.color || "#000") + "33";
-
       if (type === "rect") {
         const r = this.normalizeRect(start, end);
         if (opts.fill) ctx.fillRect(r.x * z, r.y * z, r.w * z, r.h * z);
@@ -621,11 +545,7 @@ class OkemPDFEditor {
       } else if (type === "ellipse") {
         const r = this.normalizeRect(start, end);
         ctx.beginPath();
-        ctx.ellipse(
-          (r.x + r.w / 2) * z, (r.y + r.h / 2) * z,
-          (r.w / 2) * z, (r.h / 2) * z,
-          0, 0, Math.PI * 2
-        );
+        ctx.ellipse((r.x + r.w / 2) * z, (r.y + r.h / 2) * z, (r.w / 2) * z, (r.h / 2) * z, 0, 0, Math.PI * 2);
         if (opts.fill) ctx.fill();
         ctx.stroke();
       } else if (type === "line") {
@@ -645,24 +565,21 @@ class OkemPDFEditor {
     ctx.beginPath();
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);
-    ctx.lineTo(
-      x2 - headLen * Math.cos(angle - Math.PI / 6),
-      y2 - headLen * Math.sin(angle - Math.PI / 6)
-    );
+    ctx.stroke();
+    ctx.beginPath();
     ctx.moveTo(x2, y2);
-    ctx.lineTo(
-      x2 - headLen * Math.cos(angle + Math.PI / 6),
-      y2 - headLen * Math.sin(angle + Math.PI / 6)
-    );
+    ctx.lineTo(x2 - headLen * Math.cos(angle - Math.PI / 6), y2 - headLen * Math.sin(angle - Math.PI / 6));
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - headLen * Math.cos(angle + Math.PI / 6), y2 - headLen * Math.sin(angle + Math.PI / 6));
     ctx.stroke();
   }
 
   // ─── Annotations ───────────────────────────────────
   addAnnotation(ann) {
     ann.id = Date.now() + Math.random();
-    if (!this.annotations[this.currentPage]) {
-      this.annotations[this.currentPage] = [];
-    }
+    if (!this.annotations[this.currentPage]) this.annotations[this.currentPage] = [];
     this.annotations[this.currentPage].push(ann);
     this.pushUndo({ type: "add", annotation: ann, page: this.currentPage });
   }
@@ -687,18 +604,11 @@ class OkemPDFEditor {
     layer.innerHTML = "";
 
     const pageAnns = this.annotations[this.currentPage] || [];
-
     pageAnns.forEach((ann) => {
       switch (ann.type) {
-        case "text":
-          this.renderTextAnnotation(ann, layer, z);
-          break;
-        case "image":
-          this.renderImageAnnotation(ann, layer, z);
-          break;
-        case "draw":
-          this.renderDrawAnnotation(ann, ctx, z);
-          break;
+        case "text": this.renderTextAnnotation(ann, layer, z); break;
+        case "image": this.renderImageAnnotation(ann, layer, z); break;
+        case "draw": this.renderDrawAnnotation(ann, ctx, z); break;
         case "highlight":
           ctx.fillStyle = ann.color + "55";
           ctx.fillRect(ann.x * z, ann.y * z, ann.w * z, ann.h * z);
@@ -707,24 +617,15 @@ class OkemPDFEditor {
           ctx.fillStyle = "#ffffff";
           ctx.fillRect(ann.x * z, ann.y * z, ann.w * z, ann.h * z);
           break;
-        case "shape":
-          this.renderShapeAnnotation(ann, ctx, z);
-          break;
-        case "signature":
-          this.renderSignatureAnnotation(ann, layer, z);
-          break;
-        case "link":
-          this.renderLinkAnnotation(ann, layer, z);
-          break;
-        case "note":
-          this.renderNoteAnnotation(ann, layer, z);
-          break;
+        case "shape": this.renderShapeAnnotation(ann, ctx, z); break;
+        case "signature": this.renderSignatureAnnotation(ann, layer, z); break;
+        case "link": this.renderLinkAnnotation(ann, layer, z); break;
+        case "note": this.renderNoteAnnotation(ann, layer, z); break;
       }
     });
   }
 
   drawTempAnnotations(ctx) {
-    // Draw existing draw annotations for current page during drawing
     const z = this.zoom;
     const pageAnns = this.annotations[this.currentPage] || [];
     pageAnns.forEach((ann) => {
@@ -762,7 +663,6 @@ class OkemPDFEditor {
         this.renderAnnotations();
       }
     });
-
     el.addEventListener("mousedown", (e) => {
       if (this.tool === "select") {
         e.stopPropagation();
@@ -770,7 +670,6 @@ class OkemPDFEditor {
         this.startDrag(e, ann);
       }
     });
-
     layer.appendChild(el);
   }
 
@@ -782,7 +681,6 @@ class OkemPDFEditor {
     el.style.width = ann.w * z + "px";
     el.style.height = ann.h * z + "px";
     el.dataset.annId = ann.id;
-
     const img = document.createElement("img");
     img.src = ann.dataUrl;
     img.style.width = "100%";
@@ -790,7 +688,6 @@ class OkemPDFEditor {
     img.style.objectFit = "contain";
     img.draggable = false;
     el.appendChild(img);
-
     el.addEventListener("mousedown", (e) => {
       if (this.tool === "select") {
         e.stopPropagation();
@@ -798,7 +695,6 @@ class OkemPDFEditor {
         this.startDrag(e, ann);
       }
     });
-
     layer.appendChild(el);
   }
 
@@ -820,18 +716,13 @@ class OkemPDFEditor {
     ctx.strokeStyle = ann.color || "#000";
     ctx.lineWidth = (ann.lineWidth || 2) * z;
     ctx.fillStyle = (ann.color || "#000") + "33";
-
     const type = ann.shapeType || "rect";
     if (type === "rect") {
       if (ann.fill) ctx.fillRect(ann.x * z, ann.y * z, ann.w * z, ann.h * z);
       ctx.strokeRect(ann.x * z, ann.y * z, ann.w * z, ann.h * z);
     } else if (type === "ellipse") {
       ctx.beginPath();
-      ctx.ellipse(
-        (ann.x + ann.w / 2) * z, (ann.y + ann.h / 2) * z,
-        (ann.w / 2) * z, (ann.h / 2) * z,
-        0, 0, Math.PI * 2
-      );
+      ctx.ellipse((ann.x + ann.w / 2) * z, (ann.y + ann.h / 2) * z, (ann.w / 2) * z, (ann.h / 2) * z, 0, 0, Math.PI * 2);
       if (ann.fill) ctx.fill();
       ctx.stroke();
     } else if (type === "line") {
@@ -852,7 +743,6 @@ class OkemPDFEditor {
     el.style.width = (ann.w || 200) * z + "px";
     el.style.height = (ann.h || 80) * z + "px";
     el.dataset.annId = ann.id;
-
     const img = document.createElement("img");
     img.src = ann.dataUrl;
     img.style.width = "100%";
@@ -860,7 +750,6 @@ class OkemPDFEditor {
     img.style.objectFit = "contain";
     img.draggable = false;
     el.appendChild(img);
-
     el.addEventListener("mousedown", (e) => {
       if (this.tool === "select") {
         e.stopPropagation();
@@ -868,7 +757,6 @@ class OkemPDFEditor {
         this.startDrag(e, ann);
       }
     });
-
     layer.appendChild(el);
   }
 
@@ -882,7 +770,6 @@ class OkemPDFEditor {
     el.textContent = ann.url;
     el.title = ann.url;
     el.dataset.annId = ann.id;
-
     el.addEventListener("click", (e) => {
       if (this.tool === "select") {
         e.stopPropagation();
@@ -891,14 +778,12 @@ class OkemPDFEditor {
         window.open(ann.url, "_blank");
       }
     });
-
     el.addEventListener("mousedown", (e) => {
       if (this.tool === "select") {
         e.stopPropagation();
         this.startDrag(e, ann);
       }
     });
-
     layer.appendChild(el);
   }
 
@@ -909,7 +794,6 @@ class OkemPDFEditor {
     el.style.top = ann.y * z + "px";
     el.textContent = ann.text;
     el.dataset.annId = ann.id;
-
     el.addEventListener("mousedown", (e) => {
       if (this.tool === "select") {
         e.stopPropagation();
@@ -917,7 +801,6 @@ class OkemPDFEditor {
         this.startDrag(e, ann);
       }
     });
-
     layer.appendChild(el);
   }
 
@@ -929,14 +812,11 @@ class OkemPDFEditor {
   }
 
   deselectAnnotation() {
-    document.querySelectorAll(".annotation-el.selected").forEach((el) => {
-      el.classList.remove("selected");
-    });
+    document.querySelectorAll(".annotation-el.selected").forEach((el) => el.classList.remove("selected"));
     this.selectedAnnotation = null;
   }
 
   handleSelectDown(pos) {
-    // Check if clicking on an annotation
     const pageAnns = this.annotations[this.currentPage] || [];
     for (let i = pageAnns.length - 1; i >= 0; i--) {
       const ann = pageAnns[i];
@@ -951,22 +831,18 @@ class OkemPDFEditor {
 
   hitTest(ann, pos) {
     if (ann.type === "text") {
-      // Approximate hit test
       const approxW = (ann.text || "").length * ann.fontSize * 0.6;
       const approxH = ann.fontSize * 1.4;
       return pos.x >= ann.x && pos.x <= ann.x + approxW / this.zoom &&
              pos.y >= ann.y - approxH / this.zoom && pos.y <= ann.y;
     }
     if (ann.type === "draw") {
-      return ann.points.some(
-        (p) => Math.abs(p.x - pos.x) < 10 && Math.abs(p.y - pos.y) < 10
-      );
+      return ann.points.some((p) => Math.abs(p.x - pos.x) < 10 && Math.abs(p.y - pos.y) < 10);
     }
     if (ann.x !== undefined) {
       const w = ann.w || 150;
       const h = ann.h || 80;
-      return pos.x >= ann.x && pos.x <= ann.x + w &&
-             pos.y >= ann.y && pos.y <= ann.y + h;
+      return pos.x >= ann.x && pos.x <= ann.x + w && pos.y >= ann.y && pos.y <= ann.y + h;
     }
     return false;
   }
@@ -984,19 +860,14 @@ class OkemPDFEditor {
       ann.x = origX + dx;
       ann.y = origY + dy;
       if (origPoints) {
-        ann.points = origPoints.map((p) => ({
-          x: p.x + dx,
-          y: p.y + dy,
-        }));
+        ann.points = origPoints.map((p) => ({ x: p.x + dx, y: p.y + dy }));
       }
       this.renderAnnotations();
     };
-
     const onUp = () => {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
     };
-
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
   }
@@ -1008,6 +879,7 @@ class OkemPDFEditor {
 
     // Remove existing text inputs
     wrapper.querySelectorAll(".canvas-text-input").forEach((el) => el.remove());
+    this.textInputActive = false;
 
     const input = document.createElement("textarea");
     input.className = "canvas-text-input";
@@ -1020,36 +892,47 @@ class OkemPDFEditor {
     input.style.fontStyle = opts.italic ? "italic" : "normal";
 
     wrapper.appendChild(input);
-    input.focus();
+
+    // Delay focus to avoid the click event from interfering
+    requestAnimationFrame(() => {
+      input.focus();
+      this.textInputActive = true;
+    });
 
     const commit = () => {
+      if (!this.textInputActive) return;
+      this.textInputActive = false;
       const text = input.value.trim();
       if (text) {
         this.addAnnotation({
-          type: "text",
-          page: this.currentPage,
-          x: pos.x,
-          y: pos.y + (opts.fontSize || 16),
-          text,
-          fontSize: opts.fontSize || 16,
+          type: "text", page: this.currentPage,
+          x: pos.x, y: pos.y + (opts.fontSize || 16),
+          text, fontSize: opts.fontSize || 16,
           font: opts.font || "Helvetica",
           color: opts.color || "#000",
-          bold: opts.bold || false,
-          italic: opts.italic || false,
+          bold: opts.bold || false, italic: opts.italic || false,
         });
         this.renderAnnotations();
       }
-      input.remove();
+      if (input.parentNode) input.remove();
     };
 
-    input.addEventListener("blur", commit);
+    let committed = false;
+    input.addEventListener("blur", () => {
+      if (!committed) { committed = true; commit(); }
+    });
     input.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
+        committed = true;
+        this.textInputActive = false;
         input.remove();
       } else if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
+        committed = true;
         commit();
       }
+      // Stop all other keydown events from bubbling up
+      e.stopPropagation();
     });
   }
 
@@ -1057,7 +940,6 @@ class OkemPDFEditor {
   handleImageUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = (ev) => {
       const img = new Image();
@@ -1065,12 +947,9 @@ class OkemPDFEditor {
         const maxW = 300;
         const scale = img.width > maxW ? maxW / img.width : 1;
         this.addAnnotation({
-          type: "image",
-          page: this.currentPage,
-          x: 50,
-          y: 50,
-          w: img.width * scale,
-          h: img.height * scale,
+          type: "image", page: this.currentPage,
+          x: 50, y: 50,
+          w: img.width * scale, h: img.height * scale,
           dataUrl: ev.target.result,
         });
         this.renderAnnotations();
@@ -1090,21 +969,11 @@ class OkemPDFEditor {
     ctx.strokeStyle = "#000";
     ctx.lineWidth = 2;
     ctx.lineCap = "round";
-
     let drawing = false;
-    canvas.onmousedown = (e) => {
-      drawing = true;
-      ctx.beginPath();
-      ctx.moveTo(e.offsetX, e.offsetY);
-    };
-    canvas.onmousemove = (e) => {
-      if (!drawing) return;
-      ctx.lineTo(e.offsetX, e.offsetY);
-      ctx.stroke();
-    };
+    canvas.onmousedown = (e) => { drawing = true; ctx.beginPath(); ctx.moveTo(e.offsetX, e.offsetY); };
+    canvas.onmousemove = (e) => { if (!drawing) return; ctx.lineTo(e.offsetX, e.offsetY); ctx.stroke(); };
     canvas.onmouseup = () => (drawing = false);
     canvas.onmouseleave = () => (drawing = false);
-
     this.signDataUrl = null;
     this.els["sign-text"].value = "";
     this.els["sign-preview"].textContent = "";
@@ -1113,8 +982,7 @@ class OkemPDFEditor {
 
   clearSignCanvas() {
     const canvas = this.els["sign-canvas"];
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
   }
 
   handleSignUpload(e) {
@@ -1131,17 +999,13 @@ class OkemPDFEditor {
   applySignature() {
     const activeTab = document.querySelector("#sign-modal .tab.active").dataset.tab;
     let dataUrl = null;
-
     if (activeTab === "draw") {
-      const canvas = this.els["sign-canvas"];
-      dataUrl = canvas.toDataURL("image/png");
+      dataUrl = this.els["sign-canvas"].toDataURL("image/png");
     } else if (activeTab === "type") {
       const text = this.els["sign-text"].value.trim();
       if (!text) return alert("Type your signature first.");
-      // Create canvas with text
       const c = document.createElement("canvas");
-      c.width = 400;
-      c.height = 100;
+      c.width = 400; c.height = 100;
       const ctx = c.getContext("2d");
       ctx.font = "36px 'Segoe Script', 'Brush Script MT', cursive";
       ctx.fillStyle = "#000";
@@ -1151,69 +1015,47 @@ class OkemPDFEditor {
     } else if (activeTab === "upload") {
       dataUrl = this.signDataUrl;
     }
-
     if (!dataUrl) return alert("Create a signature first.");
-
     this.addAnnotation({
-      type: "signature",
-      page: this.currentPage,
-      x: 100,
-      y: 100,
-      w: 200,
-      h: 80,
-      dataUrl,
+      type: "signature", page: this.currentPage,
+      x: 100, y: 100, w: 200, h: 80, dataUrl,
     });
     this.renderAnnotations();
     this.closeModal("sign-modal");
     this.setTool("select");
   }
 
-  // ─── Link ──────────────────────────────────────────
+  // ─── Link / Note ───────────────────────────────────
   applyLink() {
     const url = this.els["link-url"].value.trim();
     if (!url) return alert("Enter a URL.");
     if (!this.linkPosition) return;
-
     this.addAnnotation({
-      type: "link",
-      page: this.currentPage,
-      x: this.linkPosition.x,
-      y: this.linkPosition.y,
-      w: 150,
-      h: 30,
-      url,
+      type: "link", page: this.currentPage,
+      x: this.linkPosition.x, y: this.linkPosition.y,
+      w: 150, h: 30, url,
     });
     this.renderAnnotations();
     this.closeModal("link-modal");
   }
 
-  // ─── Note ──────────────────────────────────────────
   applyNote() {
     const text = this.els["note-text"].value.trim();
     if (!text) return alert("Type a note.");
     if (!this.notePosition) return;
-
     this.addAnnotation({
-      type: "note",
-      page: this.currentPage,
-      x: this.notePosition.x,
-      y: this.notePosition.y,
-      text,
+      type: "note", page: this.currentPage,
+      x: this.notePosition.x, y: this.notePosition.y, text,
     });
     this.renderAnnotations();
     this.closeModal("note-modal");
   }
 
   // ─── Modal Helpers ─────────────────────────────────
-  openModal(id) {
-    this.els[id].classList.remove("hidden");
-  }
+  openModal(id) { this.els[id].classList.remove("hidden"); }
+  closeModal(id) { this.els[id].classList.add("hidden"); }
 
-  closeModal(id) {
-    this.els[id].classList.add("hidden");
-  }
-
-  // ─── History (Undo/Redo) ───────────────────────────
+  // ─── History ───────────────────────────────────────
   pushUndo(action) {
     this.undoStack.push(action);
     this.redoStack = [];
@@ -1223,18 +1065,13 @@ class OkemPDFEditor {
   undo() {
     const action = this.undoStack.pop();
     if (!action) return;
-
     if (action.type === "add") {
       const pageAnns = this.annotations[action.page];
-      if (pageAnns) {
-        const idx = pageAnns.indexOf(action.annotation);
-        if (idx !== -1) pageAnns.splice(idx, 1);
-      }
+      if (pageAnns) { const idx = pageAnns.indexOf(action.annotation); if (idx !== -1) pageAnns.splice(idx, 1); }
     } else if (action.type === "remove") {
       if (!this.annotations[action.page]) this.annotations[action.page] = [];
       this.annotations[action.page].push(action.annotation);
     }
-
     this.redoStack.push(action);
     this.renderAnnotations();
     this.updateHistoryButtons();
@@ -1243,18 +1080,13 @@ class OkemPDFEditor {
   redo() {
     const action = this.redoStack.pop();
     if (!action) return;
-
     if (action.type === "add") {
       if (!this.annotations[action.page]) this.annotations[action.page] = [];
       this.annotations[action.page].push(action.annotation);
     } else if (action.type === "remove") {
       const pageAnns = this.annotations[action.page];
-      if (pageAnns) {
-        const idx = pageAnns.indexOf(action.annotation);
-        if (idx !== -1) pageAnns.splice(idx, 1);
-      }
+      if (pageAnns) { const idx = pageAnns.indexOf(action.annotation); if (idx !== -1) pageAnns.splice(idx, 1); }
     }
-
     this.undoStack.push(action);
     this.renderAnnotations();
     this.updateHistoryButtons();
@@ -1267,42 +1099,46 @@ class OkemPDFEditor {
 
   // ─── Keyboard Shortcuts ────────────────────────────
   onKeyDown(e) {
-    // Don't trigger shortcuts when typing or in a modal
+    // CRITICAL: Skip ALL shortcuts when user is typing anywhere
     const el = e.target;
-    if (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" ||
-        el.isContentEditable || el.closest(".modal") || el.closest(".canvas-text-input")) {
-      return;
+    const tag = el.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable) {
+      return; // let the user type freely
     }
 
+    // Skip if a modal is open
+    if (document.querySelector(".modal:not(.hidden)")) return;
+
+    // Skip if inline text input is active
+    if (this.textInputActive) return;
+
+    // Undo/Redo
     if (e.ctrlKey || e.metaKey) {
-      if (e.key === "z") {
-        e.preventDefault();
-        this.undo();
-      } else if (e.key === "y" || (e.shiftKey && e.key === "z")) {
-        e.preventDefault();
-        this.redo();
-      }
+      if (e.key === "z") { e.preventDefault(); this.undo(); }
+      else if (e.key === "y" || (e.shiftKey && e.key === "z")) { e.preventDefault(); this.redo(); }
       return;
     }
 
+    // Tool shortcuts
     const toolKeys = {
       v: "select", t: "text", i: "image", d: "draw",
       h: "highlight", w: "whiteout", s: "shape",
       g: "sign", l: "link", n: "note",
     };
-
     if (toolKeys[e.key]) {
       this.setTool(toolKeys[e.key]);
+      return;
     }
 
-    if (e.key === "Delete" || e.key === "Backspace") {
-      if (this.selectedAnnotation && this.tool === "select") {
-        this.removeAnnotation(this.selectedAnnotation);
-        this.selectedAnnotation = null;
-        this.renderAnnotations();
-      }
+    // Delete annotation
+    if ((e.key === "Delete" || e.key === "Backspace") && this.selectedAnnotation && this.tool === "select") {
+      this.removeAnnotation(this.selectedAnnotation);
+      this.selectedAnnotation = null;
+      this.renderAnnotations();
+      return;
     }
 
+    // Zoom
     if (e.key === "+" || e.key === "=") this.setZoom(this.zoom + 0.25);
     if (e.key === "-") this.setZoom(this.zoom - 0.25);
   }
@@ -1318,20 +1154,15 @@ class OkemPDFEditor {
       const helveticaFont = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
       const timesFont = await pdfDoc.embedFont(PDFLib.StandardFonts.TimesRoman);
       const courierFont = await pdfDoc.embedFont(PDFLib.StandardFonts.Courier);
-
       const fontMap = {
-        Helvetica: helveticaFont,
-        "Times New Roman": timesFont,
-        Arial: helveticaFont,
-        Courier: courierFont,
-        Georgia: timesFont,
-        Verdana: helveticaFont,
+        Helvetica: helveticaFont, "Times New Roman": timesFont,
+        Arial: helveticaFont, Courier: courierFont,
+        Georgia: timesFont, Verdana: helveticaFont,
       };
 
       for (let pageNum = 1; pageNum <= this.totalPages; pageNum++) {
         const pageAnns = this.annotations[pageNum] || [];
         if (pageAnns.length === 0) continue;
-
         const page = pdfDoc.getPage(pageNum - 1);
         const { width, height } = page.getSize();
 
@@ -1340,71 +1171,52 @@ class OkemPDFEditor {
             switch (ann.type) {
               case "text": {
                 const font = fontMap[ann.font] || helveticaFont;
-                const textY = height - ann.y;
                 page.drawText(ann.text || "", {
-                  x: ann.x,
-                  y: textY,
-                  size: ann.fontSize || 16,
-                  font,
-                  color: PDFLib.rgb(
-                    ...this.hexToRgb(ann.color || "#000000")
-                  ),
+                  x: ann.x, y: height - ann.y,
+                  size: ann.fontSize || 16, font,
+                  color: PDFLib.rgb(...this.hexToRgb(ann.color || "#000000")),
                 });
                 break;
               }
               case "highlight": {
-                const y = height - ann.y - ann.h;
                 page.drawRectangle({
-                  x: ann.x,
-                  y,
-                  width: ann.w,
-                  height: ann.h,
-                  color: PDFLib.rgb(
-                    ...this.hexToRgb(ann.color || "#ffeb3b")
-                  ),
+                  x: ann.x, y: height - ann.y - ann.h,
+                  width: ann.w, height: ann.h,
+                  color: PDFLib.rgb(...this.hexToRgb(ann.color || "#ffeb3b")),
                   opacity: 0.35,
                 });
                 break;
               }
               case "whiteout": {
-                const y = height - ann.y - ann.h;
                 page.drawRectangle({
-                  x: ann.x,
-                  y,
-                  width: ann.w,
-                  height: ann.h,
+                  x: ann.x, y: height - ann.y - ann.h,
+                  width: ann.w, height: ann.h,
                   color: PDFLib.rgb(1, 1, 1),
                 });
                 break;
               }
               case "shape": {
-                const y = height - ann.y - ann.h;
                 const color = PDFLib.rgb(...this.hexToRgb(ann.color || "#000000"));
                 const type = ann.shapeType || "rect";
                 if (type === "rect") {
                   page.drawRectangle({
-                    x: ann.x, y,
+                    x: ann.x, y: height - ann.y - ann.h,
                     width: ann.w, height: ann.h,
-                    borderColor: color,
-                    borderWidth: ann.lineWidth || 2,
-                    color: ann.fill ? PDFLib.rgb(...this.hexToRgb(ann.color || "#000000")) : undefined,
+                    borderColor: color, borderWidth: ann.lineWidth || 2,
+                    color: ann.fill ? color : undefined,
                     opacity: ann.fill ? 0.2 : 1,
                   });
                 } else if (type === "ellipse") {
                   page.drawEllipse({
-                    x: ann.x + ann.w / 2,
-                    y: y + ann.h / 2,
-                    xScale: ann.w / 2,
-                    yScale: ann.h / 2,
-                    borderColor: color,
-                    borderWidth: ann.lineWidth || 2,
+                    x: ann.x + ann.w / 2, y: height - ann.y - ann.h / 2,
+                    xScale: ann.w / 2, yScale: ann.h / 2,
+                    borderColor: color, borderWidth: ann.lineWidth || 2,
                   });
                 } else if (type === "line" || type === "arrow") {
                   page.drawLine({
                     start: { x: ann.startX, y: height - ann.startY },
                     end: { x: ann.endX, y: height - ann.endY },
-                    thickness: ann.lineWidth || 2,
-                    color,
+                    thickness: ann.lineWidth || 2, color,
                   });
                 }
                 break;
@@ -1412,66 +1224,45 @@ class OkemPDFEditor {
               case "image":
               case "signature": {
                 let image;
-                if (ann.dataUrl.startsWith("data:image/png")) {
-                  image = await pdfDoc.embedPng(ann.dataUrl);
-                } else {
-                  image = await pdfDoc.embedJpg(ann.dataUrl);
-                }
-                const y = height - ann.y - (ann.h || 80);
+                try { image = await pdfDoc.embedPng(ann.dataUrl); }
+                catch { image = await pdfDoc.embedJpg(ann.dataUrl); }
                 page.drawImage(image, {
-                  x: ann.x,
-                  y,
-                  width: ann.w || 200,
-                  height: ann.h || 80,
+                  x: ann.x, y: height - ann.y - (ann.h || 80),
+                  width: ann.w || 200, height: ann.h || 80,
                 });
                 break;
               }
               case "link": {
-                const y = height - ann.y - (ann.h || 30);
                 page.drawRectangle({
-                  x: ann.x,
-                  y,
-                  width: ann.w || 150,
-                  height: ann.h || 30,
+                  x: ann.x, y: height - ann.y - (ann.h || 30),
+                  width: ann.w || 150, height: ann.h || 30,
                   borderColor: PDFLib.rgb(...this.hexToRgb("#5b8cff")),
-                  borderWidth: 1,
-                  opacity: 0.5,
+                  borderWidth: 1, opacity: 0.5,
                 });
-                // Note: pdf-lib doesn't support clickable links easily,
-                // but we draw the URL text
                 page.drawText(ann.url.substring(0, 30), {
-                  x: ann.x + 4,
-                  y: y + 10,
-                  size: 10,
-                  font: helveticaFont,
+                  x: ann.x + 4, y: height - ann.y - 20,
+                  size: 10, font: helveticaFont,
                   color: PDFLib.rgb(...this.hexToRgb("#5b8cff")),
                 });
                 break;
               }
               case "note": {
-                const y = height - ann.y - 40;
                 page.drawRectangle({
-                  x: ann.x,
-                  y,
-                  width: 160,
-                  height: 40,
+                  x: ann.x, y: height - ann.y - 40,
+                  width: 160, height: 40,
                   color: PDFLib.rgb(1, 0.97, 0.71),
                   borderColor: PDFLib.rgb(0.95, 0.85, 0.2),
                   borderWidth: 1,
                 });
                 page.drawText(ann.text.substring(0, 50), {
-                  x: ann.x + 6,
-                  y: y + 16,
-                  size: 10,
-                  font: helveticaFont,
+                  x: ann.x + 6, y: height - ann.y - 24,
+                  size: 10, font: helveticaFont,
                   color: PDFLib.rgb(0.2, 0.2, 0.2),
                 });
                 break;
               }
             }
-          } catch (err) {
-            console.warn("Error rendering annotation:", err);
-          }
+          } catch (err) { console.warn("Error rendering annotation:", err); }
         }
       }
 
@@ -1495,10 +1286,11 @@ class OkemPDFEditor {
   hexToRgb(hex) {
     hex = hex.replace("#", "");
     if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
-    const r = parseInt(hex.substring(0, 2), 16) / 255;
-    const g = parseInt(hex.substring(2, 4), 16) / 255;
-    const b = parseInt(hex.substring(4, 6), 16) / 255;
-    return [r, g, b];
+    return [
+      parseInt(hex.substring(0, 2), 16) / 255,
+      parseInt(hex.substring(2, 4), 16) / 255,
+      parseInt(hex.substring(4, 6), 16) / 255,
+    ];
   }
 
   // ─── UI Updates ────────────────────────────────────
@@ -1510,7 +1302,6 @@ class OkemPDFEditor {
   }
 }
 
-// Initialize
 document.addEventListener("DOMContentLoaded", () => {
   window.editor = new OkemPDFEditor();
 });
