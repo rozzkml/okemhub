@@ -236,10 +236,8 @@
   <!-- Vendored libraries (self-hosted, no CDN, CVE-patched) -->
   <script src="../vendor/pdf-lib/pdf-lib.min.js"></script>
   <script src="../vendor/fontkit/fontkit.umd.min.js"></script>
-  <script type="module">
-    import * as pdfjs from "../vendor/pdfjs/pdf.min.mjs";
-    window.pdfjsLib = pdfjs;
-  </script>
+  <!-- External module (not inline) so the CSP can stay at script-src 'self' -->
+  <script type="module" src="../vendor/pdfjs-boot.mjs"></script>
   <script src="../theme.js"></script>
   <script src="pdf-editor.js"></script>
 </body>

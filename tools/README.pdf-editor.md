@@ -33,11 +33,36 @@ On Vercel it's auto-deployed from the repo root (`vercel.json` maps `/` → `ind
 
 ## Assets (vendored, pinned)
 - `vendor/pdfjs/` — pdf.js 4.10.38 (worker + cmaps + standard fonts)
-- `vendor/pdf-lib/pdf-lib.min.js` — PDFDocument, embedFont, encrypt
-- `vendor/fontkit/fontkit.umd.min.js` — TTF subset embedding
+- `vendor/pdfjs-boot.mjs` — external module that exposes pdf.js as `window.pdfjsLib` (kept out-of-line so the CSP needs no `unsafe-inline`)
+- `vendor/pdf-lib/pdf-lib.min.js` — `@cantoo/pdf-lib` fork: PDFDocument, embedFont, **working** `encrypt()` (upstream `pdf-lib@1.17` silently ignores encryption options)
+- `vendor/fontkit/fontkit.umd.min.js` — `@pdf-lib/fontkit@1.1.1`, TTF subset embedding
 - `vendor/fonts/LiberationSans-*.ttf` — editor UI + embedded text font (not Arial; Liberation is OFL-licensed)
+
+### fontkit ↔ pdf-lib API bridge
+`@cantoo/pdf-lib` calls `subset.encode()` and expects font bytes back, but
+`@pdf-lib/fontkit@1.1.1` implements `encode(stream)` — it writes into a
+restructure `EncodeStream` and throws `Cannot read properties of undefined
+(reading 'pos')` when called with no argument. `wrapFontkit()` in
+`pdf-editor.js` proxies the fontkit instance so `encode()` drains
+`encodeStream()` into a `Uint8Array`. Do not drop this shim when bumping either
+library — re-verify with `okemhub_geom_e2e.py` instead.
 
 ## Known limits
 - Text is added as a new layer; it does not reflow or edit existing PDF text.
-- Encryption uses RC4/AES as supported by pdf-lib; for high-security needs use `qpdf`/`pdftk` separately.
+- Encryption is AES-256 (V5/R6) via the fork; verified by re-opening the export
+  with and without the password.
 - Very large PDFs (>~500 pages) may be slow on low-end mobile — offload to desktop if needed.
+
+## Verification
+Two headless harnesses (Chromium via CDP, run against a local server):
+
+```bash
+python3 ~/.hermes/scripts/okemhub_test_server.py 8099 &   # serves repo w/ strict CSP
+python3 ~/.hermes/scripts/okemhub_e2e.py 8099 fixture.pdf out.pdf   # export smoke test
+python3 ~/.hermes/scripts/okemhub_geom_e2e.py 8099 fixture.pdf      # geometry proof
+```
+
+`okemhub_geom_e2e.py` places colored probe rectangles and text at known display
+coordinates, exports, re-renders the export with pdf.js, and samples pixels /
+reads glyph origins back. It asserts positions on a 3-page fixture that mixes
+rotation 0, rotation 90, and a non-zero MediaBox origin.

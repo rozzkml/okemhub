@@ -13,6 +13,56 @@ const LIB_FONTS = {
   boldItalic: "../vendor/fonts/LiberationSans-BoldItalic.ttf",
 };
 
+// ─── fontkit API bridge ─────────────────────────────────────────────────────
+// The @cantoo/pdf-lib fork prefers `subset.encode()` returning font bytes, but
+// @pdf-lib/fontkit@1.1.1 ships `encode(stream)` (writes into a restructure
+// EncodeStream) — calling it with no argument throws "reading 'pos'".
+// We wrap the fontkit instance so `encode()` collects `encodeStream()` into a
+// Uint8Array, keeping every other fontkit property/method untouched.
+function collectEncodeStream(subset) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    try {
+      const stream = subset.encodeStream();
+      stream.on("data", (chunk) => chunks.push(chunk));
+      stream.on("end", () => {
+        let total = 0;
+        for (const c of chunks) total += c.length;
+        const out = new Uint8Array(total);
+        let offset = 0;
+        for (const c of chunks) {
+          out.set(c instanceof Uint8Array ? c : new Uint8Array(c), offset);
+          offset += c.length;
+        }
+        resolve(out);
+      });
+      if (typeof stream.on === "function") stream.on("error", reject);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+function forwardingProxy(target, overrides) {
+  return new Proxy(target, {
+    get(obj, prop) {
+      if (prop in overrides) return overrides[prop];
+      const value = Reflect.get(obj, prop, obj);
+      return typeof value === "function" ? value.bind(obj) : value;
+    },
+  });
+}
+
+function wrapFontkit(fk) {
+  const wrapSubset = (subset) =>
+    forwardingProxy(subset, { encode: () => collectEncodeStream(subset) });
+  const wrapFont = (font) =>
+    forwardingProxy(font, { createSubset: () => wrapSubset(font.createSubset()) });
+  return forwardingProxy(fk, {
+    create: (data, postscriptName) => wrapFont(fk.create(data, postscriptName)),
+  });
+}
+
 class OkemPDFEditor {
   constructor() {
     this.pdfDoc = null;        // pdf.js document
@@ -306,12 +356,44 @@ class OkemPDFEditor {
   }
 
   // ─── Coordinate mapping ─────────────────────────
-  // Displayed (CSS) coords -> PDF page space (bottom-left, y-up, unrotated)
-  toPageSpace(dx, dy) {
-    const info = this.pageInfos[this.currentPage - 1];
+  // Display (CSS, y-down, scale-1) coords -> PDF page space (y-up), for a
+  // specific page. pdf.js's viewport already folds in /Rotate and a non-zero
+  // MediaBox origin, so this is correct for every page geometry.
+  toPageSpace(dx, dy, pageNum = this.currentPage) {
+    const info = this.pageInfos[pageNum - 1];
     const vp = info.viewport1; // scale 1, with page rotation
     const [px, py] = vp.convertToPdfPoint(dx, dy);
     return { x: px, y: py };
+  }
+
+  // Places a display-space box on a page. Returns pdf-lib draw args.
+  //
+  // pdf-lib anchors drawRectangle/drawImage at the shape's bottom-left and
+  // rotates CCW about it, so the anchor is the display box's bottom-left
+  // corner mapped into page space. The rotation needed to cancel the viewer's
+  // /Rotate is the page rotation itself (CCW), which holds for 0/90/180/270.
+  placeBox(pageNum, dx, dy, dw, dh) {
+    const p = this.toPageSpace(dx, dy + dh, pageNum);
+    return {
+      x: p.x,
+      y: p.y,
+      width: dw,
+      height: dh,
+      rotate: PDFLib.degrees(this.pageInfos[pageNum - 1].rotation || 0),
+    };
+  }
+
+  // Axis-aligned page-space rect from two opposite display corners. Used for
+  // things that must be axis-aligned in page space (PDF /Rect annotations).
+  pageRect(pageNum, dx, dy, dw, dh) {
+    const a = this.toPageSpace(dx, dy, pageNum);
+    const b = this.toPageSpace(dx + dw, dy + dh, pageNum);
+    return {
+      x: Math.min(a.x, b.x),
+      y: Math.min(a.y, b.y),
+      width: Math.abs(b.x - a.x),
+      height: Math.abs(b.y - a.y),
+    };
   }
 
   // ─── Tool Management ────────────────────────────
@@ -1241,7 +1323,7 @@ class OkemPDFEditor {
     const key = ann.italic ? (ann.bold ? "boldItalic" : "italic") : (ann.bold ? "bold" : "regular");
     if (this.fontCache[key]) return this.fontCache[key];
     if (!pdfDoc.isFontkitRegistered) {
-      pdfDoc.registerFontkit(fontkit);
+      pdfDoc.registerFontkit(wrapFontkit(fontkit));
       pdfDoc.isFontkitRegistered = true;
     }
     const bytes = await (await fetch(LIB_FONTS[key])).arrayBuffer();
@@ -1260,49 +1342,42 @@ class OkemPDFEditor {
 
     try {
       const pdfDoc = await PDFLib.PDFDocument.load(this.pdfBytes);
-      pdfDoc.registerFontkit(fontkit);
+      pdfDoc.registerFontkit(wrapFontkit(fontkit));
+      pdfDoc.isFontkitRegistered = true;
 
       for (let pageNum = 1; pageNum <= this.totalPages; pageNum++) {
         const pageAnns = this.annotations[pageNum] || [];
         if (pageAnns.length === 0) continue;
         const page = pdfDoc.getPage(pageNum - 1);
-        const { width: PW, height: PH } = page.getSize();
+        const rot = PDFLib.degrees(this.pageInfos[pageNum - 1].rotation || 0);
 
         for (const ann of pageAnns) {
           try {
             switch (ann.type) {
               case "text": {
                 const font = await this.getFont(pdfDoc, ann);
-                const top = this.toPageSpace(ann.x, ann.y);
-                const baseline = top.y - (ann.fontSize || 16) * 0.8;
+                const size = ann.fontSize || 16;
+                // ann.y is the top of the display box; shift down to baseline
+                // in display space, then map.
+                const p = this.toPageSpace(ann.x, ann.y + size * 0.8, pageNum);
                 page.drawText(ann.text || "", {
-                  x: top.x, y: baseline,
-                  size: ann.fontSize || 16, font,
+                  x: p.x, y: p.y, size, font, rotate: rot,
                   color: PDFLib.rgb(...this.hexToRgb(ann.color || "#000000")),
                 });
                 break;
               }
               case "highlight": {
-                const a = this.toPageSpace(ann.x, ann.y);
-                const b = this.toPageSpace(ann.x + ann.w, ann.y + ann.h);
-                const x = Math.min(a.x, b.x);
-                const y = Math.min(a.y, b.y);
-                const w = Math.abs(b.x - a.x);
-                const h = Math.abs(b.y - a.y);
                 page.drawRectangle({
-                  x, y, width: w, height: h,
+                  ...this.placeBox(pageNum, ann.x, ann.y, ann.w, ann.h),
                   color: PDFLib.rgb(...this.hexToRgb(ann.color || "#ffeb3b")),
                   opacity: 0.35,
+                  blendMode: PDFLib.BlendMode.Multiply,
                 });
                 break;
               }
               case "whiteout": {
-                const a = this.toPageSpace(ann.x, ann.y);
-                const b = this.toPageSpace(ann.x + ann.w, ann.y + ann.h);
-                const x = Math.min(a.x, b.x);
-                const y = Math.min(a.y, b.y);
                 page.drawRectangle({
-                  x, y, width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y),
+                  ...this.placeBox(pageNum, ann.x, ann.y, ann.w, ann.h),
                   color: PDFLib.rgb(1, 1, 1),
                 });
                 break;
@@ -1311,59 +1386,60 @@ class OkemPDFEditor {
                 const color = PDFLib.rgb(...this.hexToRgb(ann.color || "#000000"));
                 const type = ann.shapeType || "rect";
                 if (type === "rect") {
-                  const a = this.toPageSpace(ann.x, ann.y);
-                  const b = this.toPageSpace(ann.x + ann.w, ann.y + ann.h);
                   page.drawRectangle({
-                    x: Math.min(a.x, b.x), y: Math.min(a.y, b.y),
-                    width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y),
+                    ...this.placeBox(pageNum, ann.x, ann.y, ann.w, ann.h),
                     borderColor: color, borderWidth: ann.lineWidth || 2,
                     color: ann.fill ? color : undefined,
-                    opacity: ann.fill ? 0.2 : 1,
+                    opacity: ann.fill ? 0.2 : undefined,
                   });
                 } else if (type === "ellipse") {
-                  const a = this.toPageSpace(ann.x, ann.y);
-                  const b = this.toPageSpace(ann.x + ann.w, ann.y + ann.h);
+                  const c = this.toPageSpace(ann.x + ann.w / 2, ann.y + ann.h / 2, pageNum);
                   page.drawEllipse({
-                    x: (a.x + b.x) / 2, y: (a.y + b.y) / 2,
-                    xScale: Math.abs(b.x - a.x) / 2, yScale: Math.abs(b.y - a.y) / 2,
+                    x: c.x, y: c.y,
+                    xScale: ann.w / 2, yScale: ann.h / 2, rotate: rot,
                     borderColor: color, borderWidth: ann.lineWidth || 2,
+                    color: ann.fill ? color : undefined,
+                    opacity: ann.fill ? 0.2 : undefined,
                   });
                 } else if (type === "line" || type === "arrow") {
-                  const a = this.toPageSpace(ann.startX, ann.startY);
-                  const b = this.toPageSpace(ann.endX, ann.endY);
-                  page.drawLine({
-                    start: { x: a.x, y: a.y },
-                    end: { x: b.x, y: b.y },
-                    thickness: ann.lineWidth || 2, color,
-                  });
+                  // Endpoints map directly — no rotation needed, they are
+                  // already absolute page-space points.
+                  const a = this.toPageSpace(ann.startX, ann.startY, pageNum);
+                  const b = this.toPageSpace(ann.endX, ann.endY, pageNum);
+                  const thickness = ann.lineWidth || 2;
+                  page.drawLine({ start: a, end: b, thickness, color, lineCap: PDFLib.LineCapStyle.Round });
                   if (type === "arrow") {
                     const ang = Math.atan2(b.y - a.y, b.x - a.x);
-                    const hl = 10;
-                    page.drawLine({
-                      start: { x: b.x, y: b.y },
-                      end: { x: b.x - hl * Math.cos(ang - Math.PI / 6), y: b.y - hl * Math.sin(ang - Math.PI / 6) },
-                      thickness: ann.lineWidth || 2, color,
-                    });
-                    page.drawLine({
-                      start: { x: b.x, y: b.y },
-                      end: { x: b.x - hl * Math.cos(ang + Math.PI / 6), y: b.y - hl * Math.sin(ang + Math.PI / 6) },
-                      thickness: ann.lineWidth || 2, color,
-                    });
+                    const hl = Math.max(8, thickness * 4);
+                    for (const off of [-Math.PI / 6, Math.PI / 6]) {
+                      page.drawLine({
+                        start: b,
+                        end: {
+                          x: b.x - hl * Math.cos(ang + off),
+                          y: b.y - hl * Math.sin(ang + off),
+                        },
+                        thickness, color, lineCap: PDFLib.LineCapStyle.Round,
+                      });
+                    }
                   }
                 }
                 break;
               }
               case "draw": {
-                const color = PDFLib.rgb(...this.hexToRgb(ann.color || "#000000"));
-                for (let i = 1; i < ann.points.length; i++) {
-                  const a = this.toPageSpace(ann.points[i - 1].x, ann.points[i - 1].y);
-                  const b = this.toPageSpace(ann.points[i].x, ann.points[i].y);
-                  page.drawLine({
-                    start: { x: a.x, y: a.y },
-                    end: { x: b.x, y: b.y },
-                    thickness: (ann.lineWidth || 3), color,
-                  });
-                }
+                const pts = (ann.points || []).map((pt) => this.toPageSpace(pt.x, pt.y, pageNum));
+                if (pts.length < 2) break;
+                // One continuous path: correct joins, no double-stroked seams.
+                page.pushOperators(
+                  PDFLib.pushGraphicsState(),
+                  PDFLib.setStrokingColor(PDFLib.rgb(...this.hexToRgb(ann.color || "#000000"))),
+                  PDFLib.setLineWidth(ann.lineWidth || 3),
+                  PDFLib.setLineCap(PDFLib.LineCapStyle.Round),
+                  PDFLib.setLineJoin(PDFLib.LineJoinStyle.Round),
+                  PDFLib.moveTo(pts[0].x, pts[0].y),
+                  ...pts.slice(1).map((p) => PDFLib.lineTo(p.x, p.y)),
+                  PDFLib.stroke(),
+                  PDFLib.popGraphicsState(),
+                );
                 break;
               }
               case "image":
@@ -1371,56 +1447,50 @@ class OkemPDFEditor {
                 let image;
                 try { image = await pdfDoc.embedPng(ann.dataUrl); }
                 catch { image = await pdfDoc.embedJpg(ann.dataUrl); }
-                const a = this.toPageSpace(ann.x, ann.y);
-                const b = this.toPageSpace(ann.x + (ann.w || 200), ann.y + (ann.h || 80));
-                page.drawImage(image, {
-                  x: Math.min(a.x, b.x),
-                  y: Math.min(a.y, b.y),
-                  width: Math.abs(b.x - a.x),
-                  height: Math.abs(b.y - a.y),
-                });
+                page.drawImage(image, this.placeBox(
+                  pageNum, ann.x, ann.y, ann.w || 200, ann.h || 80,
+                ));
                 break;
               }
               case "link": {
-                const a = this.toPageSpace(ann.x, ann.y);
-                const b = this.toPageSpace(ann.x + (ann.w || 150), ann.y + (ann.h || 30));
-                const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
-                const w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y);
+                const w = ann.w || 150, h = ann.h || 30;
+                const box = this.placeBox(pageNum, ann.x, ann.y, w, h);
                 page.drawRectangle({
-                  x, y, width: w, height: h,
+                  ...box,
                   borderColor: PDFLib.rgb(...this.hexToRgb("#5b8cff")),
                   borderWidth: 1, opacity: 0.5,
                 });
                 const font = await this.getFont(pdfDoc, { bold: false, italic: false });
+                const label = this.toPageSpace(ann.x + 4, ann.y + 14, pageNum);
                 page.drawText(ann.url.substring(0, 30), {
-                  x: x + 4, y: y + h - 12,
-                  size: 10, font,
+                  x: label.x, y: label.y, size: 10, font, rotate: rot,
                   color: PDFLib.rgb(...this.hexToRgb("#5b8cff")),
                 });
-                const url = ann.url.startsWith("http") ? ann.url : "https://" + ann.url;
+                const url = /^https?:\/\//i.test(ann.url) ? ann.url : "https://" + ann.url;
+                // /Rect must be axis-aligned in page space, so it is derived
+                // from the mapped corners rather than the rotated draw box.
                 page.drawLink({
                   url,
                   borderColor: PDFLib.rgb(0, 0, 0),
                   borderWidth: 0,
                   borderOpacity: 0,
-                  rect: { x, y, width: w, height: h },
+                  rect: this.pageRect(pageNum, ann.x, ann.y, w, h),
                 });
                 break;
               }
               case "note": {
-                const a = this.toPageSpace(ann.x, ann.y);
                 const w = 160, h = 40;
+                const box = this.placeBox(pageNum, ann.x, ann.y, w, h);
                 page.drawRectangle({
-                  x: a.x, y: a.y - h,
-                  width: w, height: h,
+                  ...box,
                   color: PDFLib.rgb(1, 0.97, 0.71),
                   borderColor: PDFLib.rgb(0.95, 0.85, 0.2),
                   borderWidth: 1,
                 });
                 const font = await this.getFont(pdfDoc, { bold: false, italic: false });
-                page.drawText(ann.text.substring(0, 50), {
-                  x: a.x + 6, y: a.y - 24,
-                  size: 10, font,
+                const label = this.toPageSpace(ann.x + 6, ann.y + 16, pageNum);
+                page.drawText((ann.text || "").substring(0, 50), {
+                  x: label.x, y: label.y, size: 10, font, rotate: rot,
                   color: PDFLib.rgb(0.2, 0.2, 0.2),
                 });
                 break;
@@ -1435,19 +1505,23 @@ class OkemPDFEditor {
       const saveOpts = {};
       const pw = (this.els["pdf-password"].value || "").trim();
       if (pw) {
-        saveOpts.encrypt = true;
-        saveOpts.userPassword = pw;
-        saveOpts.ownerPassword = pw;
-        saveOpts.permissions = {
-          printing: "highResolution",
-          modifying: false,
-          copying: false,
-          annotating: false,
-        };
+        // AES-256 (V5/R6) via the pdf-lib fork's real encryption support.
+        // Requires crypto.getRandomValues — present in every browser we target.
+        pdfDoc.encrypt({
+          userPassword: pw,
+          ownerPassword: pw,
+          permissions: {
+            printing: "highResolution",
+            modifying: false,
+            copying: false,
+            annotating: false,
+          },
+        });
       }
 
       const modifiedBytes = await pdfDoc.save(saveOpts);
       const blob = new Blob([modifiedBytes], { type: "application/pdf" });
+      window.__lastBlob = blob; // test hook
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

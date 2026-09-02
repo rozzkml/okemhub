@@ -1,0 +1,18 @@
+/* 404 page layout. Kept external (not an inline <style> block) so the
+   Content-Security-Policy can stay at `style-src 'self'` with no
+   'unsafe-inline' escape hatch. */
+body {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  text-align: center;
+}
+
+h1 {
+  font-size: 4rem;
+  margin: 0;
+}
+
+a {
+  color: var(--accent);
+}
