@@ -95,16 +95,20 @@ class OkemPDFEditor {
     overlay.addEventListener("mouseup", (e) => this.onMouseUp(e));
     overlay.addEventListener("mouseleave", (e) => this.onMouseUp(e));
 
-    // Touch support
+    // Touch support — only prevent default when actively editing
     overlay.addEventListener("touchstart", (e) => {
-      e.preventDefault();
+      if (this.tool !== "select") {
+        e.preventDefault();
+      }
       const t = e.touches[0];
       this.onMouseDown({ clientX: t.clientX, clientY: t.clientY, target: overlay });
     }, { passive: false });
     overlay.addEventListener("touchmove", (e) => {
-      e.preventDefault();
-      const t = e.touches[0];
-      this.onMouseMove({ clientX: t.clientX, clientY: t.clientY, target: overlay });
+      if (this.isDrawing) {
+        e.preventDefault();
+        const t = e.touches[0];
+        this.onMouseMove({ clientX: t.clientX, clientY: t.clientY, target: overlay });
+      }
     }, { passive: false });
     overlay.addEventListener("touchend", (e) => {
       this.onMouseUp({});
@@ -114,6 +118,15 @@ class OkemPDFEditor {
     els["btn-zoom-in"].addEventListener("click", () => this.setZoom(this.zoom + 0.25));
     els["btn-zoom-out"].addEventListener("click", () => this.setZoom(this.zoom - 0.25));
     els["btn-zoom-fit"].addEventListener("click", () => this.fitToWidth());
+
+    // Ctrl+Scroll to zoom
+    els["canvas-area"].addEventListener("wheel", (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.15 : 0.15;
+        this.setZoom(this.zoom + delta);
+      }
+    }, { passive: false });
 
     // Navigation
     els["btn-prev"].addEventListener("click", () => this.goToPage(this.currentPage - 1));
@@ -192,7 +205,7 @@ class OkemPDFEditor {
     this.els["editor-screen"].classList.remove("hidden");
 
     this.renderThumbnails();
-    this.renderPage();
+    this.fitToWidth();
     this.updateUI();
   }
 

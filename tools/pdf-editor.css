@@ -238,17 +238,20 @@ body {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  display: flex;
-  justify-content: center;
   padding: 20px;
   background: var(--bg);
+  display: flex;
+  justify-content: safe center;
+  align-items: safe center;
 }
 
 .canvas-wrapper {
   position: relative;
+  margin: auto;
   box-shadow: 0 4px 24px rgba(0,0,0,0.3);
   border-radius: 4px;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 #pdf-canvas {
