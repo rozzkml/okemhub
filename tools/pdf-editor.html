@@ -87,23 +87,26 @@
         </div>
       </div>
 
-      <!-- Main Canvas Area -->
-      <div class="canvas-area" id="canvas-area">
-        <div class="canvas-wrapper" id="canvas-wrapper">
-          <canvas id="pdf-canvas"></canvas>
-          <canvas id="overlay-canvas"></canvas>
-          <div id="annotation-layer"></div>
+      <!-- Main Content (Canvas + Sidebar) -->
+      <div class="editor-body">
+        <!-- Main Canvas Area -->
+        <div class="canvas-area" id="canvas-area">
+          <div class="canvas-wrapper" id="canvas-wrapper">
+            <canvas id="pdf-canvas"></canvas>
+            <canvas id="overlay-canvas"></canvas>
+            <div id="annotation-layer"></div>
+          </div>
         </div>
-      </div>
 
-      <!-- Page Sidebar -->
-      <div class="sidebar" id="sidebar">
+        <!-- Page Sidebar -->
+        <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
           <span>Pages</span>
           <span id="page-info" class="muted">0 / 0</span>
         </div>
         <div class="page-list" id="page-list"></div>
       </div>
+      </div><!-- end editor-body -->
 
       <!-- Bottom Bar -->
       <div class="bottom-bar">

@@ -1,8 +1,25 @@
 /* ===== PDF Editor — okemhub ===== */
 
+/* Override global styles for editor layout */
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+.nav {
+  position: relative !important;
+  flex-shrink: 0;
+}
+
 /* Layout */
 #app {
-  height: calc(100vh - 57px);
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -61,8 +78,16 @@
 /* Editor Screen */
 .editor-screen {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+.editor-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
   overflow: hidden;
 }
 
@@ -166,6 +191,7 @@
 /* Canvas Area */
 .canvas-area {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   display: flex;
   justify-content: center;
