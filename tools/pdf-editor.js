@@ -1267,8 +1267,10 @@ class OkemPDFEditor {
 
   // ─── Keyboard Shortcuts ────────────────────────────
   onKeyDown(e) {
-    // Don't trigger shortcuts when typing in inputs
-    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.contentEditable === "true") {
+    // Don't trigger shortcuts when typing or in a modal
+    const el = e.target;
+    if (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" ||
+        el.isContentEditable || el.closest(".modal") || el.closest(".canvas-text-input")) {
       return;
     }
 
