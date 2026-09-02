@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OKEM · PDF Text Editor</title>
+    <link rel="stylesheet" href="../style.css" />
+    <style>
+      .te-wrap { max-width: 1100px; margin: 0 auto; padding: 24px; }
+      .te-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 14px 0; }
+      .te-toolbar label { font-size: 13px; color: var(--muted-foreground); }
+      .te-toolbar input[type="color"] { width: 34px; height: 30px; border: none; background: none; }
+      .te-toolbar input[type="number"], .te-toolbar select {
+        background: var(--card); color: var(--foreground); border: 1px solid var(--border);
+        border-radius: 8px; padding: 6px 8px; font-size: 13px;
+      }
+      #te-canvas-host {
+        position: relative; border: 1px solid var(--border); border-radius: 10px;
+        overflow: auto; background: #1b1b1f; max-height: 70vh; margin-top: 8px;
+      }
+      #te-canvas-host canvas { display: block; cursor: crosshair; }
+      #te-overlay { position: absolute; left: 0; top: 0; pointer-events: none; }
+      .te-mode-btn.active { outline: 2px solid var(--accent); }
+      .te-hint { font-size: 12px; color: var(--muted-foreground); margin: 6px 0; }
+      .te-editlist { font-size: 12px; color: var(--muted-foreground); max-height: 120px; overflow:auto; }
+      .te-editlist div { padding: 2px 0; border-bottom: 1px dashed var(--border); }
+    </style>
+  </head>
+  <body>
+    <div class="te-wrap">
+      <a class="back" href="../index.html">← Back</a>
+      <h1>PDF Text Editor</h1>
+      <p class="te-hint">
+        Edit teks di dalam PDF: <b>tambah teks</b> (klik di halaman), <b>hapus / redaksi</b>
+        (drag seleksi → tutup dengan kotak). Semua di browser, file tidak dikirim ke server.
+      </p>
+
+      <div id="drop" class="drop">Drop a PDF here or click to choose</div>
+      <input id="file" type="file" accept="application/pdf" hidden />
+
+      <div id="board-tool" style="display:none">
+        <div class="te-toolbar">
+          <strong>Mode:</strong>
+          <button id="m-add" class="btn te-mode-btn active" data-mode="add">＋ Add Text</button>
+          <button id="m-del" class="btn te-mode-btn" data-mode="delete">▭ Hide (white)</button>
+          <button id="m-red" class="btn te-mode-btn" data-mode="redact">▮ Redact (black)</button>
+        </div>
+        <div class="te-toolbar" id="text-opts">
+          <label>Font <select id="font"></select></label>
+          <label>Size <input id="size" type="number" value="12" min="6" max="72" style="width:60px" /></label>
+          <label>Color <input id="color" type="color" value="#000000" /></label>
+        </div>
+        <div class="te-hint" id="hint">Klik di halaman untuk menaruh teks baru.</div>
+
+        <div id="te-canvas-host">
+          <canvas id="te-canvas"></canvas>
+          <canvas id="te-overlay"></canvas>
+        </div>
+
+        <div class="te-toolbar">
+          <button id="prev" class="btn">← Prev</button>
+          <span id="pg">Page - / -</span>
+          <button id="next" class="btn">Next →</button>
+          <button id="undo" class="btn">Undo</button>
+          <button id="reset" class="btn">Reset Edits</button>
+          <button id="export" class="btn btn-primary">⬇ Export PDF</button>
+        </div>
+        <div class="te-editlist" id="editlist"></div>
+      </div>
+    </div>
+
+    <script src="../vendor/pdf.min.js"></script>
+    <script src="../vendor/pdf-lib.min.js"></script>
+    <script src="../vendor/fontkit.umd.min.js"></script>
+    <script src="pdf-text-editor.core.js"></script>
+    <script>
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "../vendor/pdf.worker.min.js";
+      const $ = (id) => document.getElementById(id);
+      // Populate font dropdown from the core's single source of truth.
+      (function fillFonts() {
+        const sel = $("font");
+        PdfTextEditorCore.FONT_LIST.forEach((f) => {
+          const o = document.createElement("option");
+          o.value = f.key;
+          o.textContent = f.label;
+          sel.appendChild(o);
+        });
+      })();
+      const drop = $("drop"), fileInput = $("file");
+      const board = $("board-tool");
+      let pdfBytes = null, pdfDoc = null, pdfLibDoc = null;
+      let pageNum = 1, numPages = 0, scale = 1.5;
+      let mode = "add";
+      let viewport = null;
+      // edits: { pageIndex: [ {type:'text', x,y,text,size,color,font}
+      //                       | {type:'rect', rect:{x,y,width,height}, color} ] }
+      let edits = {};
+      let draftText = ""; // current text being typed for add mode
+
+      drop.onclick = () => fileInput.click();
+      drop.ondragover = (e) => { e.preventDefault(); };
+      drop.ondrop = (e) => { e.preventDefault(); if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); };
+      fileInput.onchange = () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); };
+
+      async function loadFile(f) {
+        if (f.type !== "application/pdf") { alert("Bukan file PDF."); return; }
+        pdfBytes = new Uint8Array(await f.arrayBuffer());
+        const loading = await pdfjsLib.getDocument({ data: pdfBytes.slice() }).promise;
+        pdfDoc = loading;
+        numPages = pdfDoc.numPages;
+        pdfLibDoc = await PdfTextEditorCore.loadPdf(pdfBytes);
+        edits = {};
+        pageNum = 1;
+        board.style.display = "block";
+        drop.style.display = "none";
+        await renderPage();
+      }
+
+      async function renderPage() {
+        const page = await pdfDoc.getPage(pageNum);
+        viewport = page.getViewport({ scale });
+        const canvas = $("te-canvas");
+        const ctx = canvas.getContext("2d");
+        canvas.width = viewport.width; canvas.height = viewport.height;
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        const ov = $("te-overlay");
+        ov.width = viewport.width; ov.height = viewport.height;
+        $("pg").textContent = `Page ${pageNum} / ${numPages}`;
+        drawEdits();
+      }
+
+      function setMode(m) {
+        mode = m;
+        document.querySelectorAll(".te-mode-btn").forEach((b) =>
+          b.classList.toggle("active", b.dataset.mode === m));
+        $("text-opts").style.display = m === "add" ? "flex" : "none";
+        $("hint").textContent = m === "add"
+          ? "Klik di halaman untuk menaruh teks baru. (ketik lalu Enter)"
+          : "Drag untuk seleksi → tutup dengan kotak " + (m === "redact" ? "hitam (redaksi)" : "putih (sembunyikan)");
+      }
+      document.querySelectorAll(".te-mode-btn").forEach((b) =>
+        b.onclick = () => setMode(b.dataset.mode));
+
+      const canvas = $("te-canvas"), overlay = $("te-overlay"), octx = overlay.getContext("2d");
+      let dragging = false, start = null, cur = null;
+
+      canvas.addEventListener("mousedown", (e) => {
+        const r = canvas.getBoundingClientRect();
+        const p = { x: e.clientX - r.left, y: e.clientY - r.top };
+        if (mode === "add") {
+          draftText = prompt("Teks baru:");
+          if (draftText) addTextEdit(p, draftText);
+        } else {
+          dragging = true; start = p; cur = p; drawOverlay();
+        }
+      });
+      canvas.addEventListener("mousemove", (e) => {
+        if (!dragging) return;
+        const r = canvas.getBoundingClientRect();
+        cur = { x: e.clientX - r.left, y: e.clientY - r.top };
+        drawOverlay();
+      });
+      window.addEventListener("mouseup", () => {
+        if (!dragging) return;
+        dragging = false;
+        const rect = normRect(start, cur);
+        if (rect.w > 3 && rect.h > 3) {
+          const color = mode === "redact" ? "#000000" : "#ffffff";
+          pushEdit(pageNum, { type: "rect", rect, color });
+        }
+        drawOverlay(); renderPage();
+      });
+
+      function normRect(a, b) {
+        return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y),
+                 w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) };
+      }
+      function drawOverlay() {
+        octx.clearRect(0, 0, overlay.width, overlay.height);
+        if (dragging && start && cur) {
+          const r = normRect(start, cur);
+          octx.fillStyle = mode === "redact" ? "rgba(0,0,0,.5)" : "rgba(255,255,255,.6)";
+          octx.fillRect(r.x, r.y, r.w, r.h);
+          octx.strokeStyle = "#ff5252"; octx.strokeRect(r.x, r.y, r.w, r.h);
+        }
+      }
+      function drawEdits() {
+        octx.clearRect(0, 0, overlay.width, overlay.height);
+        (edits[pageNum] || []).forEach((e) => {
+          if (e.type === "rect") {
+            octx.fillStyle = e.color === "#000000" ? "#000" : "#fff";
+            octx.fillRect(e.rect.x, e.rect.y, e.rect.w, e.rect.h);
+          }
+        });
+      }
+
+      function pushEdit(pi, edit) {
+        (edits[pi] = edits[pi] || []).push(edit);
+        if (edit.type === "rect") drawEdits();
+        refreshList();
+      }
+      function addTextEdit(pt, text) {
+        const p = PdfTextEditorCore.cssPointToPdf(pt, viewport, scale);
+        pushEdit(pageNum, { type: "text", x: p.x, y: p.y, text,
+          size: +$("size").value, color: $("color").value, font: $("font").value });
+        renderPage();
+      }
+      function refreshList() {
+        let n = 0; const lines = [];
+        Object.keys(edits).forEach((pi) => edits[pi].forEach((e) => {
+          n++; lines.push(`p${pi}: ${e.type === "text" ? "text '" + e.text + "'" : "rect " + e.color}`);
+        }));
+        $("editlist").innerHTML = n ? lines.join("<br>") : "Belum ada edit.";
+      }
+
+      $("prev").onclick = () => { if (pageNum > 1) { pageNum--; renderPage(); } };
+      $("next").onclick = () => { if (pageNum < numPages) { pageNum++; renderPage(); } };
+      $("undo").onclick = () => {
+        const arr = edits[pageNum];
+        if (arr && arr.length) { arr.pop(); renderPage(); refreshList(); }
+      };
+      $("reset").onclick = () => { edits = {}; refreshList(); renderPage(); };
+
+      $("export").onclick = async () => {
+        const doc = await PdfTextEditorCore.loadPdf(pdfBytes);
+        await PdfTextEditorCore.applyEdits(doc, edits);
+        const out = await PdfTextEditorCore.save(doc);
+        const blob = new Blob([out], { type: "application/pdf" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "edited.pdf"; a.click();
+      };
+
+      setMode("add");
+    </script>
+  </body>
+</html>
