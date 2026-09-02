@@ -3,48 +3,6 @@
 //   url points to a page under tools/ (e.g. "tools/x.html")
 const tools = [
   {
-    name: "Text Utils",
-    tag: "Text",
-    desc: "Change text case and count words, characters, and lines.",
-    url: "tools/text-utils.html",
-  },
-  {
-    name: "JSON Formatter",
-    tag: "Dev",
-    desc: "Pretty-print, minify, and validate JSON.",
-    url: "tools/json-formatter.html",
-  },
-  {
-    name: "Base64",
-    tag: "Encode",
-    desc: "Encode and decode text to/from Base64 (UTF-8 safe).",
-    url: "tools/base64.html",
-  },
-  {
-    name: "UUID Generator",
-    tag: "Dev",
-    desc: "Generate random UUID v4 identifiers locally.",
-    url: "tools/uuid.html",
-  },
-  {
-    name: "Password Generator",
-    tag: "Security",
-    desc: "Create strong random passwords with the Web Crypto API.",
-    url: "tools/password.html",
-  },
-  {
-    name: "URL Encode / Decode",
-    tag: "Encode",
-    desc: "Encode and decode URL components.",
-    url: "tools/url.html",
-  },
-  {
-    name: "Color Converter",
-    tag: "Design",
-    desc: "Convert colors between HEX and RGB.",
-    url: "tools/color.html",
-  },
-  {
     name: "PDF Editor",
     tag: "PDF",
     desc: "Edit PDF files — add text, images, shapes, signatures, and more.",
