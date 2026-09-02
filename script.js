@@ -22,13 +22,31 @@
   if (yearEl) yearEl.textContent = new Date().getFullYear();
 })();
 
-// Project cards — only the okem repo (per brief)
+// okem tools — every tool lives INSIDE the okem repo (base repo + Vercel).
+// To add a tool: push an entry below.
+//   status: "live" -> clickable (internal path like "tools/x.html" or external URL)
+//   status: "soon" -> shows a "Soon" badge, not clickable
 const projects = [
   {
-    name: "okem",
-    tag: "Free functions",
-    desc: "A collection of small, free, single-purpose tools that run without accounts or installs.",
+    name: "PDF Editor",
+    tag: "Tool",
+    desc: "Edit, merge, and annotate PDFs entirely in the browser. No uploads.",
+    url: "tools/pdf-editor.html",
+    status: "soon",
+  },
+  {
+    name: "Converter",
+    tag: "Tool",
+    desc: "Convert video, audio, and images client-side with FFmpeg.wasm.",
+    url: "tools/converter.html",
+    status: "soon",
+  },
+  {
+    name: "okem base",
+    tag: "Repo",
+    desc: "The base repo and Vercel deployment that hosts every okem tool.",
     url: "https://github.com/rozzkml/okem",
+    status: "live",
   },
 ];
 
@@ -36,15 +54,23 @@ const projects = [
   const grid = document.getElementById("project-grid");
   if (!grid) return;
   const html = projects
-    .map(
-      (p) => `
+    .map((p) => {
+      const isSoon = p.status === "soon";
+      const badges = isSoon
+        ? `<span class="tag">${p.tag}</span><span class="status">Soon</span>`
+        : `<span class="tag">${p.tag}</span>`;
+      const external = p.url.startsWith("http");
+      const link = isSoon
+        ? `<span class="more muted">Coming soon</span>`
+        : `<a class="more" href="${p.url}"${external ? ' target="_blank" rel="noopener"' : ""}>Open ↗</a>`;
+      return `
       <article class="card">
-        <span class="tag">${p.tag}</span>
+        ${badges}
         <h3>${p.name}</h3>
         <p>${p.desc}</p>
-        <a class="more" href="${p.url}" target="_blank" rel="noopener">View on GitHub ↗</a>
-      </article>`
-    )
+        ${link}
+      </article>`;
+    })
     .join("");
   grid.innerHTML = html;
 })();
