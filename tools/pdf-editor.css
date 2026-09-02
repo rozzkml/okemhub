@@ -283,6 +283,20 @@ body {
   outline-offset: 2px;
 }
 
+.resize-handle {
+  position: absolute;
+  right: -7px;
+  bottom: -7px;
+  width: 14px;
+  height: 14px;
+  background: var(--accent);
+  border: 2px solid #fff;
+  border-radius: 50%;
+  cursor: nwse-resize;
+  pointer-events: auto;
+  z-index: 20;
+}
+
 .annotation-text {
   background: transparent;
   border: none;
@@ -650,6 +664,43 @@ body {
   z-index: 10;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--text, #1b2030);
+  color: var(--bg, #fff);
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  z-index: 1000;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.25s ease;
+}
+.toast.hidden {
+  opacity: 0;
+}
+
+.pdf-password-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 8px;
+}
+.pdf-password-wrap input {
+  width: 120px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 0.78rem;
 }
 
 /* Responsive */

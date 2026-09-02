@@ -2,10 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+  <title>PDF Editor — okemhub</title>
   <meta name="description" content="okemhub PDF Editor — edit PDF files in your browser. Add text, images, shapes, signatures and more. Free, no uploads." />
+  <meta name="theme-color" content="#0b0e14" />
+  <meta name="robots" content="index, follow" />
+  <meta property="og:title" content="PDF Editor — okemhub" />
+  <meta property="og:description" content="Edit PDF files in your browser. Add text, images, shapes, signatures. Free, no uploads." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://okemhub.vercel.app/tools/pdf-editor.html" />
   <title>PDF Editor — okemhub</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📄</text></svg>" />
+  <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="stylesheet" href="../style.css" />
   <link rel="stylesheet" href="pdf-editor.css" />
 </head>
@@ -25,10 +33,10 @@
       <div class="upload-box" id="drop-zone">
         <div class="upload-icon">📄</div>
         <h2>Edit your PDF</h2>
-        <p class="muted">Drag & drop a PDF file here, or click to select</p>
+        <p class="muted">Drag &amp; drop a PDF file here, or click to select</p>
         <label class="btn primary upload-btn">
           Upload PDF
-          <input type="file" id="file-input" accept=".pdf" hidden />
+          <input type="file" id="file-input" accept="application/pdf" hidden />
         </label>
         <p class="upload-note">Your files stay private — everything runs in your browser.</p>
       </div>
@@ -38,7 +46,6 @@
     <div id="editor-screen" class="editor-screen hidden">
       <!-- Toolbar (Ribbon style) -->
       <div class="ribbon" id="toolbar">
-        <!-- Main Tools Row -->
         <div class="ribbon-tabs">
           <button class="ribbon-tab" data-tool="select" title="Select (V)">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg>
@@ -84,15 +91,11 @@
             <span>Note</span>
           </button>
         </div>
-        <!-- Sub-options Row (contextual) -->
-        <div class="ribbon-options" id="tool-options">
-          <!-- Dynamic options injected by JS -->
-        </div>
+        <div class="ribbon-options" id="tool-options"></div>
       </div>
 
-      <!-- Main Content (Canvas + Sidebar) -->
+      <!-- Main Content -->
       <div class="editor-body">
-        <!-- Main Canvas Area -->
         <div class="canvas-area" id="canvas-area">
           <div class="canvas-wrapper" id="canvas-wrapper">
             <canvas id="pdf-canvas"></canvas>
@@ -101,15 +104,14 @@
           </div>
         </div>
 
-        <!-- Page Sidebar -->
         <div class="sidebar" id="sidebar">
-        <div class="sidebar-header">
-          <span>Pages</span>
-          <span id="page-info" class="muted">0 / 0</span>
+          <div class="sidebar-header">
+            <span>Pages</span>
+            <span id="page-info" class="muted">0 / 0</span>
+          </div>
+          <div class="page-list" id="page-list"></div>
         </div>
-        <div class="page-list" id="page-list"></div>
       </div>
-      </div><!-- end editor-body -->
 
       <!-- Bottom Bar -->
       <div class="bottom-bar">
@@ -142,6 +144,9 @@
           </button>
         </div>
         <div class="bottom-right">
+          <span class="pdf-password-wrap" title="Optional: encrypt the exported PDF">
+            <input type="password" id="pdf-password" placeholder="Encrypt (pw)" autocomplete="off" />
+          </span>
           <button class="btn primary" id="btn-download">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Download PDF
@@ -153,11 +158,11 @@
   </div>
 
   <!-- Signature Modal -->
-  <div id="sign-modal" class="modal hidden">
+  <div id="sign-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Create Signature">
     <div class="modal-content">
       <div class="modal-header">
         <h3>Create Signature</h3>
-        <button class="modal-close" id="sign-close">&times;</button>
+        <button class="modal-close" id="sign-close" aria-label="Close">&times;</button>
       </div>
       <div class="modal-tabs">
         <button class="tab active" data-tab="draw">Draw</button>
@@ -189,14 +194,14 @@
   </div>
 
   <!-- Link Modal -->
-  <div id="link-modal" class="modal hidden">
+  <div id="link-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Add Link">
     <div class="modal-content modal-sm">
       <div class="modal-header">
         <h3>Add Link</h3>
-        <button class="modal-close" id="link-close">&times;</button>
+        <button class="modal-close" id="link-close" aria-label="Close">&times;</button>
       </div>
       <div class="modal-body">
-        <label class="field-label">URL</label>
+        <label class="field-label" for="link-url">URL</label>
         <input type="url" id="link-url" placeholder="https://example.com" class="sign-input" />
       </div>
       <div class="modal-footer">
@@ -207,11 +212,11 @@
   </div>
 
   <!-- Note Modal -->
-  <div id="note-modal" class="modal hidden">
+  <div id="note-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Add Note">
     <div class="modal-content modal-sm">
       <div class="modal-header">
         <h3>Add Note</h3>
-        <button class="modal-close" id="note-close">&times;</button>
+        <button class="modal-close" id="note-close" aria-label="Close">&times;</button>
       </div>
       <div class="modal-body">
         <textarea id="note-text" placeholder="Type your note..." class="sign-input" rows="4"></textarea>
@@ -225,9 +230,16 @@
 
   <!-- Hidden file input for image tool -->
   <input type="file" id="image-input" accept="image/*" hidden />
+  <!-- Toast -->
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <!-- Vendored libraries (self-hosted, no CDN, CVE-patched) -->
+  <script src="../vendor/pdf-lib/pdf-lib.min.js"></script>
+  <script src="../vendor/fontkit/fontkit.umd.min.js"></script>
+  <script type="module">
+    import * as pdfjs from "../vendor/pdfjs/pdf.min.mjs";
+    window.pdfjsLib = pdfjs;
+  </script>
   <script src="../theme.js"></script>
   <script src="pdf-editor.js"></script>
 </body>

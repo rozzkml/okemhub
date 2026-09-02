@@ -1,18 +1,26 @@
 // okemhub PDF Editor — client-side PDF editing
-// Libraries: PDF.js (render) + pdf-lib (modify/save)
+// Libraries: PDF.js (render) + pdf-lib (modify/save) + fontkit (font embedding)
+// All assets are vendored locally (no CDN, no uploads).
+// pdf.js is loaded as an ES module; window.pdfjsLib is assigned by the module script
+// BEFORE DOMContentLoaded, so we set the worker source inside init() (not at top level).
 
-/* global pdfjsLib, PDFLib */
+/* global pdfjsLib, PDFLib, fontkit */
 
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+const LIB_FONTS = {
+  regular: "../vendor/fonts/LiberationSans-Regular.ttf",
+  bold: "../vendor/fonts/LiberationSans-Bold.ttf",
+  italic: "../vendor/fonts/LiberationSans-Italic.ttf",
+  boldItalic: "../vendor/fonts/LiberationSans-BoldItalic.ttf",
+};
 
 class OkemPDFEditor {
   constructor() {
-    this.pdfDoc = null;
-    this.pdfBytes = null;
-    this.pages = [];
-    this.currentPage = 1;
+    this.pdfDoc = null;        // pdf.js document
+    this.pdfBytes = null;      // original file bytes
+    this.pdfLibDoc = null;     // pdf-lib document (built at export)
+    this.pageInfos = [];       // per-page geometry + cached viewport
     this.totalPages = 0;
+    this.currentPage = 1;
     this.zoom = 1.5;
     this.tool = "text";
     this.annotations = {};
@@ -25,12 +33,21 @@ class OkemPDFEditor {
     this.signDataUrl = null;
     this.linkPosition = null;
     this.notePosition = null;
-    this.textInputActive = false; // track if inline text input is open
+    this.textInputActive = false;
+    this.fontCache = {};       // embedded pdf-lib fonts
     this.els = {};
+    this.pointers = new Map(); // active pointers for pinch
+    this.pinchStart = null;
     this.init();
   }
 
   init() {
+    // pdf.js is ESM; window.pdfjsLib is ready by DOMContentLoaded
+    if (!window.pdfjsLib) {
+      console.error("pdf.js failed to load — check vendor/pdfjs path");
+    } else {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "../vendor/pdfjs/pdf.worker.min.mjs";
+    }
     this.cacheDom();
     this.bindEvents();
   }
@@ -43,13 +60,13 @@ class OkemPDFEditor {
       "sidebar", "page-list", "page-info",
       "btn-undo", "btn-redo", "btn-zoom-in", "btn-zoom-out", "btn-zoom-fit",
       "zoom-level", "btn-prev", "btn-next", "page-nav",
-      "btn-download", "btn-new-file",
+      "btn-download", "btn-new-file", "pdf-password",
       "sign-modal", "sign-close", "sign-canvas", "sign-clear",
       "sign-text", "sign-preview", "sign-file", "sign-upload-preview",
       "sign-cancel", "sign-apply",
       "link-modal", "link-close", "link-url", "link-cancel", "link-apply",
       "note-modal", "note-close", "note-text", "note-cancel", "note-apply",
-      "image-input",
+      "image-input", "toast",
     ];
     ids.forEach((id) => (this.els[id] = document.getElementById(id)));
   }
@@ -57,7 +74,6 @@ class OkemPDFEditor {
   bindEvents() {
     const { els } = this;
 
-    // Upload
     els["file-input"].addEventListener("change", (e) => this.handleFile(e.target.files[0]));
     els["drop-zone"].addEventListener("dragover", (e) => {
       e.preventDefault();
@@ -72,7 +88,6 @@ class OkemPDFEditor {
       if (e.dataTransfer.files[0]) this.handleFile(e.dataTransfer.files[0]);
     });
 
-    // Tool buttons
     document.querySelectorAll(".ribbon-tab").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.preventDefault();
@@ -80,29 +95,19 @@ class OkemPDFEditor {
       });
     });
 
-    // Canvas mouse events
+    // Pointer events unify mouse / touch / pen
     const overlay = els["overlay-canvas"];
-    overlay.addEventListener("mousedown", (e) => this.onMouseDown(e));
-    overlay.addEventListener("mousemove", (e) => this.onMouseMove(e));
-    overlay.addEventListener("mouseup", (e) => this.onMouseUp(e));
-    overlay.addEventListener("mouseleave", (e) => this.onMouseUp(e));
+    overlay.addEventListener("pointerdown", (e) => this.onPointerDown(e));
+    overlay.addEventListener("pointermove", (e) => this.onPointerMove(e));
+    overlay.addEventListener("pointerup", (e) => this.onPointerUp(e));
+    overlay.addEventListener("pointercancel", (e) => this.onPointerUp(e));
+    overlay.addEventListener("pointerleave", (e) => this.onPointerUp(e));
 
-    // Touch support
-    overlay.addEventListener("touchstart", (e) => {
-      if (this.tool !== "select") e.preventDefault();
-      const t = e.touches[0];
-      this.onMouseDown({ clientX: t.clientX, clientY: t.clientY, target: overlay });
-    }, { passive: false });
-    overlay.addEventListener("touchmove", (e) => {
-      if (this.isDrawing) {
-        e.preventDefault();
-        const t = e.touches[0];
-        this.onMouseMove({ clientX: t.clientX, clientY: t.clientY, target: overlay });
-      }
-    }, { passive: false });
-    overlay.addEventListener("touchend", () => this.onMouseUp({}));
+    // Pinch-zoom (two pointers on the canvas area)
+    els["canvas-area"].addEventListener("touchstart", (e) => this.onTouchStart(e), { passive: false });
+    els["canvas-area"].addEventListener("touchmove", (e) => this.onTouchMove(e), { passive: false });
+    els["canvas-area"].addEventListener("touchend", (e) => this.onTouchEnd(e), { passive: false });
 
-    // Zoom
     els["btn-zoom-in"].addEventListener("click", () => this.setZoom(this.zoom + 0.25));
     els["btn-zoom-out"].addEventListener("click", () => this.setZoom(this.zoom - 0.25));
     els["btn-zoom-fit"].addEventListener("click", () => this.fitToWidth());
@@ -113,22 +118,17 @@ class OkemPDFEditor {
       }
     }, { passive: false });
 
-    // Navigation
     els["btn-prev"].addEventListener("click", () => this.goToPage(this.currentPage - 1));
     els["btn-next"].addEventListener("click", () => this.goToPage(this.currentPage + 1));
 
-    // Undo/Redo
     els["btn-undo"].addEventListener("click", () => this.undo());
     els["btn-redo"].addEventListener("click", () => this.redo());
 
-    // Download / New
     els["btn-download"].addEventListener("click", () => this.downloadPDF());
     els["btn-new-file"].addEventListener("click", () => this.resetEditor());
 
-    // Image tool
     els["image-input"].addEventListener("change", (e) => this.handleImageUpload(e));
 
-    // Signature modal
     els["sign-close"].addEventListener("click", () => this.closeModal("sign-modal"));
     els["sign-cancel"].addEventListener("click", () => this.closeModal("sign-modal"));
     els["sign-apply"].addEventListener("click", () => this.applySignature());
@@ -138,7 +138,6 @@ class OkemPDFEditor {
     });
     els["sign-file"].addEventListener("change", (e) => this.handleSignUpload(e));
 
-    // Modal tabs
     document.querySelectorAll(".modal-tabs .tab").forEach((tab) => {
       tab.addEventListener("click", () => {
         const modal = tab.closest(".modal");
@@ -149,65 +148,96 @@ class OkemPDFEditor {
       });
     });
 
-    // Link modal
     els["link-close"].addEventListener("click", () => this.closeModal("link-modal"));
     els["link-cancel"].addEventListener("click", () => this.closeModal("link-modal"));
     els["link-apply"].addEventListener("click", () => this.applyLink());
 
-    // Note modal
     els["note-close"].addEventListener("click", () => this.closeModal("note-modal"));
     els["note-cancel"].addEventListener("click", () => this.closeModal("note-modal"));
     els["note-apply"].addEventListener("click", () => this.applyNote());
 
-    // Keyboard — use capture phase to intercept before anything else
     document.addEventListener("keydown", (e) => this.onKeyDown(e), true);
   }
 
-  // ─── File Handling ─────────────────────────────────
+  // ─── Toast ──────────────────────────────────────
+  toast(msg, ms = 2600) {
+    const t = this.els["toast"];
+    if (!t) return;
+    t.textContent = msg;
+    t.classList.remove("hidden");
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => t.classList.add("hidden"), ms);
+  }
+
+  // ─── File Handling ──────────────────────────────
   async handleFile(file) {
-    if (!file || file.type !== "application/pdf") {
-      alert("Please select a PDF file.");
+    if (!file) return;
+    if (file.type && file.type !== "application/pdf") {
+      this.toast("Please select a PDF file.");
       return;
     }
-    this.pdfBytes = await file.arrayBuffer();
-    this.pdfDoc = await pdfjsLib.getDocument({ data: this.pdfBytes.slice(0) }).promise;
-    this.totalPages = this.pdfDoc.numPages;
-    this.pages = [];
-    this.annotations = {};
-    this.undoStack = [];
-    this.redoStack = [];
-    this.currentPage = 1;
+    this.toast("Loading PDF…", 9999);
+    try {
+      this.pdfBytes = await file.arrayBuffer();
+      this.pdfDoc = await pdfjsLib.getDocument({ data: this.pdfBytes.slice(0) }).promise;
+      this.totalPages = this.pdfDoc.numPages;
+      this.pageInfos = [];
+      this.annotations = {};
+      this.undoStack = [];
+      this.redoStack = [];
+      this.currentPage = 1;
 
-    for (let i = 1; i <= this.totalPages; i++) {
-      const page = await this.pdfDoc.getPage(i);
-      const vp = page.getViewport({ scale: 1 });
-      this.pages.push({ width: vp.width, height: vp.height });
+      for (let i = 1; i <= this.totalPages; i++) {
+        const page = await this.pdfDoc.getPage(i);
+        const rotation = page.rotate || 0;
+        const vp = page.getViewport({ scale: 1, rotation });
+        const mb = page.getMediaBox ? page.getMediaBox() : null;
+        const cb = page.getCropBox ? page.getCropBox() : null;
+        this.pageInfos.push({
+          width: vp.width,
+          height: vp.height,
+          rotation,
+          mediaBox: mb ? [mb.x, mb.y, mb.width, mb.height] : null,
+          cropBox: cb ? [cb.x, cb.y, cb.width, cb.height] : null,
+          dispW: vp.width,   // displayed (rotated) size at scale 1
+          dispH: vp.height,
+          viewport1: vp,     // cached for coordinate mapping
+        });
+      }
+
+      this.els["upload-screen"].classList.add("hidden");
+      this.els["editor-screen"].classList.remove("hidden");
+      this.renderThumbnails();
+      this.fitToWidth();
+      this.updateUI();
+      this.toast("PDF loaded.");
+    } catch (err) {
+      console.error(err);
+      this.toast("Failed to load PDF: " + err.message);
     }
-
-    this.els["upload-screen"].classList.add("hidden");
-    this.els["editor-screen"].classList.remove("hidden");
-    this.renderThumbnails();
-    this.fitToWidth();
-    this.updateUI();
   }
 
   resetEditor() {
     this.pdfDoc = null;
     this.pdfBytes = null;
-    this.pages = [];
+    this.pdfLibDoc = null;
+    this.pageInfos = [];
     this.annotations = {};
     this.undoStack = [];
     this.redoStack = [];
     this.currentPage = 1;
+    this.fontCache = {};
     this.els["editor-screen"].classList.add("hidden");
     this.els["upload-screen"].classList.remove("hidden");
     this.els["file-input"].value = "";
+    this.els["pdf-password"].value = "";
   }
 
-  // ─── Rendering ─────────────────────────────────────
+  // ─── Rendering ──────────────────────────────────
   async renderPage() {
+    const info = this.pageInfos[this.currentPage - 1];
     const page = await this.pdfDoc.getPage(this.currentPage);
-    const viewport = page.getViewport({ scale: this.zoom });
+    const viewport = page.getViewport({ scale: this.zoom, rotation: info.rotation });
 
     const canvas = this.els["pdf-canvas"];
     const ctx = canvas.getContext("2d");
@@ -231,12 +261,13 @@ class OkemPDFEditor {
     const list = this.els["page-list"];
     list.innerHTML = "";
     for (let i = 1; i <= this.totalPages; i++) {
+      const info = this.pageInfos[i - 1];
       const div = document.createElement("div");
       div.className = "page-thumb" + (i === this.currentPage ? " active" : "");
       div.dataset.page = i;
       const canvas = document.createElement("canvas");
       const page = await this.pdfDoc.getPage(i);
-      const vp = page.getViewport({ scale: 0.2 });
+      const vp = page.getViewport({ scale: 0.2, rotation: info.rotation });
       canvas.width = vp.width;
       canvas.height = vp.height;
       await page.render({ canvasContext: canvas.getContext("2d"), viewport: vp }).promise;
@@ -267,14 +298,23 @@ class OkemPDFEditor {
 
   fitToWidth() {
     const area = this.els["canvas-area"];
-    const page = this.pages[this.currentPage - 1];
-    if (!page) return;
-    this.zoom = (area.clientWidth - 60) / page.width;
+    const info = this.pageInfos[this.currentPage - 1];
+    if (!info) return;
+    this.zoom = (area.clientWidth - 60) / info.dispW;
     this.renderPage();
     this.els["zoom-level"].textContent = Math.round(this.zoom * 100) + "%";
   }
 
-  // ─── Tool Management ───────────────────────────────
+  // ─── Coordinate mapping ─────────────────────────
+  // Displayed (CSS) coords -> PDF page space (bottom-left, y-up, unrotated)
+  toPageSpace(dx, dy) {
+    const info = this.pageInfos[this.currentPage - 1];
+    const vp = info.viewport1; // scale 1, with page rotation
+    const [px, py] = vp.convertToPdfPoint(dx, dy);
+    return { x: px, y: py };
+  }
+
+  // ─── Tool Management ────────────────────────────
   setTool(tool) {
     this.tool = tool;
     document.querySelectorAll(".ribbon-tab").forEach((btn) => {
@@ -304,12 +344,9 @@ class OkemPDFEditor {
     if (t === "text") {
       c.innerHTML = `
         ${sec("Font", `<select id="opt-font">
-          <option value="Helvetica">Helvetica</option>
-          <option value="Times New Roman">Times New Roman</option>
-          <option value="Courier">Courier</option>
-          <option value="Arial">Arial</option>
-          <option value="Georgia">Georgia</option>
-          <option value="Verdana">Verdana</option>
+          <option value="sans">Sans (default)</option>
+          <option value="serif">Serif</option>
+          <option value="mono">Mono</option>
         </select>`)}
         ${sec("Size", `<input type="range" id="opt-size" min="8" max="72" value="16" />
           <span class="opt-val" id="opt-size-val">16</span>`)}
@@ -387,7 +424,7 @@ class OkemPDFEditor {
     return opts;
   }
 
-  // ─── Canvas Mouse Events ───────────────────────────
+  // ─── Pointer Events ─────────────────────────────
   getCanvasPos(e) {
     const rect = this.els["overlay-canvas"].getBoundingClientRect();
     return {
@@ -396,26 +433,24 @@ class OkemPDFEditor {
     };
   }
 
-  onMouseDown(e) {
+  onPointerDown(e) {
+    if (e.pointerType === "touch" && this.pointers.size >= 1) return; // let pinch handle
+    this.pointers.set(e.pointerId, e);
+    if (this.tool === "select") {
+      const pos = this.getCanvasPos(e);
+      this.handleSelectDown(pos);
+      return;
+    }
     const pos = this.getCanvasPos(e);
     const opts = this.getToolOptions();
-
     switch (this.tool) {
-      case "select":
-        this.handleSelectDown(pos);
-        break;
-      case "text":
-        this.createTextInput(pos, opts);
-        break;
+      case "text": this.createTextInput(pos, opts); break;
       case "draw":
         this.isDrawing = true;
         this.currentPath = [pos];
         break;
       case "highlight":
       case "whiteout":
-        this.isDrawing = true;
-        this.drawStart = pos;
-        break;
       case "shape":
         this.isDrawing = true;
         this.drawStart = pos;
@@ -437,7 +472,7 @@ class OkemPDFEditor {
     }
   }
 
-  onMouseMove(e) {
+  onPointerMove(e) {
     if (!this.isDrawing) return;
     const pos = this.getCanvasPos(e);
     const overlay = this.els["overlay-canvas"];
@@ -459,17 +494,18 @@ class OkemPDFEditor {
         ctx.lineTo(this.currentPath[i].x * this.zoom, this.currentPath[i].y * this.zoom);
       }
       ctx.stroke();
-    } else if (this.tool === "highlight" || this.tool === "whiteout" || this.tool === "shape") {
+    } else if (["highlight", "whiteout", "shape"].includes(this.tool)) {
       ctx.clearRect(0, 0, overlay.width, overlay.height);
       this.drawTempAnnotations(ctx);
       this.drawPreview(ctx, this.drawStart, pos, this.getToolOptions());
     }
   }
 
-  onMouseUp(e) {
+  onPointerUp(e) {
+    this.pointers.delete(e.pointerId);
     if (!this.isDrawing) return;
     this.isDrawing = false;
-    const pos = e.clientX ? this.getCanvasPos(e) : this.drawStart;
+    const pos = e.clientX !== undefined ? this.getCanvasPos(e) : this.drawStart;
     const opts = this.getToolOptions();
 
     if (this.tool === "draw" && this.currentPath.length > 1) {
@@ -514,6 +550,31 @@ class OkemPDFEditor {
     this.currentPath = [];
     this.drawStart = null;
     this.renderAnnotations();
+  }
+
+  // Pinch-to-zoom
+  onTouchStart(e) {
+    if (e.touches.length === 2) {
+      this.pinchStart = {
+        dist: this._touchDist(e),
+        zoom: this.zoom,
+      };
+    }
+  }
+  onTouchMove(e) {
+    if (e.touches.length === 2 && this.pinchStart) {
+      e.preventDefault();
+      const d = this._touchDist(e);
+      const ratio = d / this.pinchStart.dist;
+      this.setZoom(this.pinchStart.zoom * ratio);
+    }
+  }
+  onTouchEnd(e) {
+    if (e.touches.length < 2) this.pinchStart = null;
+  }
+  _touchDist(e) {
+    const [a, b] = [e.touches[0], e.touches[1]];
+    return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
   }
 
   normalizeRect(a, b) {
@@ -576,7 +637,7 @@ class OkemPDFEditor {
     ctx.stroke();
   }
 
-  // ─── Annotations ───────────────────────────────────
+  // ─── Annotations ────────────────────────────────
   addAnnotation(ann) {
     ann.id = Date.now() + Math.random();
     if (!this.annotations[this.currentPage]) this.annotations[this.currentPage] = [];
@@ -650,7 +711,7 @@ class OkemPDFEditor {
     el.style.left = ann.x * z + "px";
     el.style.top = ann.y * z + "px";
     el.style.fontSize = ann.fontSize * z + "px";
-    el.style.fontFamily = ann.font || "Helvetica";
+    el.style.fontFamily = this._cssFont(ann);
     el.style.color = ann.color || "#000";
     el.style.fontWeight = ann.bold ? "bold" : "normal";
     el.style.fontStyle = ann.italic ? "italic" : "normal";
@@ -663,7 +724,7 @@ class OkemPDFEditor {
         this.renderAnnotations();
       }
     });
-    el.addEventListener("mousedown", (e) => {
+    el.addEventListener("pointerdown", (e) => {
       if (this.tool === "select") {
         e.stopPropagation();
         this.selectAnnotation(ann, el);
@@ -671,6 +732,13 @@ class OkemPDFEditor {
       }
     });
     layer.appendChild(el);
+  }
+
+  _cssFont(ann) {
+    const fam = ann.font === "serif" ? "Georgia, serif"
+      : ann.font === "mono" ? "monospace"
+      : "system-ui, sans-serif";
+    return fam;
   }
 
   renderImageAnnotation(ann, layer, z) {
@@ -688,11 +756,12 @@ class OkemPDFEditor {
     img.style.objectFit = "contain";
     img.draggable = false;
     el.appendChild(img);
-    el.addEventListener("mousedown", (e) => {
+    el.addEventListener("pointerdown", (e) => {
       if (this.tool === "select") {
         e.stopPropagation();
         this.selectAnnotation(ann, el);
         this.startDrag(e, ann);
+        this.attachResize(ann, el, z);
       }
     });
     layer.appendChild(el);
@@ -750,11 +819,12 @@ class OkemPDFEditor {
     img.style.objectFit = "contain";
     img.draggable = false;
     el.appendChild(img);
-    el.addEventListener("mousedown", (e) => {
+    el.addEventListener("pointerdown", (e) => {
       if (this.tool === "select") {
         e.stopPropagation();
         this.selectAnnotation(ann, el);
         this.startDrag(e, ann);
+        this.attachResize(ann, el, z);
       }
     });
     layer.appendChild(el);
@@ -778,7 +848,7 @@ class OkemPDFEditor {
         window.open(ann.url, "_blank");
       }
     });
-    el.addEventListener("mousedown", (e) => {
+    el.addEventListener("pointerdown", (e) => {
       if (this.tool === "select") {
         e.stopPropagation();
         this.startDrag(e, ann);
@@ -794,7 +864,7 @@ class OkemPDFEditor {
     el.style.top = ann.y * z + "px";
     el.textContent = ann.text;
     el.dataset.annId = ann.id;
-    el.addEventListener("mousedown", (e) => {
+    el.addEventListener("pointerdown", (e) => {
       if (this.tool === "select") {
         e.stopPropagation();
         this.selectAnnotation(ann, el);
@@ -804,7 +874,7 @@ class OkemPDFEditor {
     layer.appendChild(el);
   }
 
-  // ─── Selection & Drag ──────────────────────────────
+  // ─── Selection & Drag ───────────────────────────
   selectAnnotation(ann, el) {
     this.deselectAnnotation();
     this.selectedAnnotation = ann;
@@ -813,7 +883,36 @@ class OkemPDFEditor {
 
   deselectAnnotation() {
     document.querySelectorAll(".annotation-el.selected").forEach((el) => el.classList.remove("selected"));
+    document.querySelectorAll(".resize-handle").forEach((h) => h.remove());
     this.selectedAnnotation = null;
+  }
+
+  attachResize(ann, el, z) {
+    const handle = document.createElement("div");
+    handle.className = "resize-handle";
+    el.appendChild(handle);
+    const start = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const sx = e.clientX, sy = e.clientY;
+      const ow = ann.w, oh = ann.h;
+      const move = (ev) => {
+        const dw = (ev.clientX - sx) / this.zoom;
+        const dh = (ev.clientY - sy) / this.zoom;
+        ann.w = Math.max(20, ow + dw);
+        ann.h = Math.max(20, oh + dh);
+        el.style.width = ann.w * this.zoom + "px";
+        el.style.height = ann.h * this.zoom + "px";
+      };
+      const up = () => {
+        document.removeEventListener("pointermove", move);
+        document.removeEventListener("pointerup", up);
+        this.renderAnnotations();
+      };
+      document.addEventListener("pointermove", move);
+      document.addEventListener("pointerup", up);
+    };
+    handle.addEventListener("pointerdown", start);
   }
 
   handleSelectDown(pos) {
@@ -862,22 +961,27 @@ class OkemPDFEditor {
       if (origPoints) {
         ann.points = origPoints.map((p) => ({ x: p.x + dx, y: p.y + dy }));
       }
+      if (ann.startX !== undefined) {
+        ann.startX = origX + dx;
+        ann.startY = origY + dy;
+        ann.endX = ann.startX + (ann.endX - origX);
+        ann.endY = ann.startY + (ann.endY - origY);
+      }
       this.renderAnnotations();
     };
     const onUp = () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
     };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
   }
 
-  // ─── Text Input ────────────────────────────────────
+  // ─── Text Input ─────────────────────────────────
   createTextInput(pos, opts) {
     const z = this.zoom;
     const wrapper = this.els["canvas-wrapper"];
 
-    // Remove existing text inputs
     wrapper.querySelectorAll(".canvas-text-input").forEach((el) => el.remove());
     this.textInputActive = false;
 
@@ -886,14 +990,13 @@ class OkemPDFEditor {
     input.style.left = pos.x * z + "px";
     input.style.top = pos.y * z + "px";
     input.style.fontSize = (opts.fontSize || 16) * z + "px";
-    input.style.fontFamily = opts.font || "Helvetica";
+    input.style.fontFamily = this._cssFont(opts);
     input.style.color = opts.color || "#000";
     input.style.fontWeight = opts.bold ? "bold" : "normal";
     input.style.fontStyle = opts.italic ? "italic" : "normal";
 
     wrapper.appendChild(input);
 
-    // Delay focus to avoid the click event from interfering
     requestAnimationFrame(() => {
       input.focus();
       this.textInputActive = true;
@@ -908,7 +1011,7 @@ class OkemPDFEditor {
           type: "text", page: this.currentPage,
           x: pos.x, y: pos.y + (opts.fontSize || 16),
           text, fontSize: opts.fontSize || 16,
-          font: opts.font || "Helvetica",
+          font: opts.font || "sans",
           color: opts.color || "#000",
           bold: opts.bold || false, italic: opts.italic || false,
         });
@@ -931,12 +1034,11 @@ class OkemPDFEditor {
         committed = true;
         commit();
       }
-      // Stop all other keydown events from bubbling up
       e.stopPropagation();
     });
   }
 
-  // ─── Image Upload ──────────────────────────────────
+  // ─── Image Upload ───────────────────────────────
   handleImageUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -961,7 +1063,7 @@ class OkemPDFEditor {
     e.target.value = "";
   }
 
-  // ─── Signature ─────────────────────────────────────
+  // ─── Signature ──────────────────────────────────
   initSignCanvas() {
     const canvas = this.els["sign-canvas"];
     const ctx = canvas.getContext("2d");
@@ -970,10 +1072,10 @@ class OkemPDFEditor {
     ctx.lineWidth = 2;
     ctx.lineCap = "round";
     let drawing = false;
-    canvas.onmousedown = (e) => { drawing = true; ctx.beginPath(); ctx.moveTo(e.offsetX, e.offsetY); };
-    canvas.onmousemove = (e) => { if (!drawing) return; ctx.lineTo(e.offsetX, e.offsetY); ctx.stroke(); };
-    canvas.onmouseup = () => (drawing = false);
-    canvas.onmouseleave = () => (drawing = false);
+    canvas.onpointerdown = (e) => { drawing = true; ctx.beginPath(); ctx.moveTo(e.offsetX, e.offsetY); };
+    canvas.onpointermove = (e) => { if (!drawing) return; ctx.lineTo(e.offsetX, e.offsetY); ctx.stroke(); };
+    canvas.onpointerup = () => (drawing = false);
+    canvas.onpointerleave = () => (drawing = false);
     this.signDataUrl = null;
     this.els["sign-text"].value = "";
     this.els["sign-preview"].textContent = "";
@@ -1003,7 +1105,7 @@ class OkemPDFEditor {
       dataUrl = this.els["sign-canvas"].toDataURL("image/png");
     } else if (activeTab === "type") {
       const text = this.els["sign-text"].value.trim();
-      if (!text) return alert("Type your signature first.");
+      if (!text) return this.toast("Type your signature first.");
       const c = document.createElement("canvas");
       c.width = 400; c.height = 100;
       const ctx = c.getContext("2d");
@@ -1015,7 +1117,7 @@ class OkemPDFEditor {
     } else if (activeTab === "upload") {
       dataUrl = this.signDataUrl;
     }
-    if (!dataUrl) return alert("Create a signature first.");
+    if (!dataUrl) return this.toast("Create a signature first.");
     this.addAnnotation({
       type: "signature", page: this.currentPage,
       x: 100, y: 100, w: 200, h: 80, dataUrl,
@@ -1025,10 +1127,10 @@ class OkemPDFEditor {
     this.setTool("select");
   }
 
-  // ─── Link / Note ───────────────────────────────────
+  // ─── Link / Note ────────────────────────────────
   applyLink() {
     const url = this.els["link-url"].value.trim();
-    if (!url) return alert("Enter a URL.");
+    if (!url) return this.toast("Enter a URL.");
     if (!this.linkPosition) return;
     this.addAnnotation({
       type: "link", page: this.currentPage,
@@ -1041,7 +1143,7 @@ class OkemPDFEditor {
 
   applyNote() {
     const text = this.els["note-text"].value.trim();
-    if (!text) return alert("Type a note.");
+    if (!text) return this.toast("Type a note.");
     if (!this.notePosition) return;
     this.addAnnotation({
       type: "note", page: this.currentPage,
@@ -1051,11 +1153,11 @@ class OkemPDFEditor {
     this.closeModal("note-modal");
   }
 
-  // ─── Modal Helpers ─────────────────────────────────
+  // ─── Modal Helpers ──────────────────────────────
   openModal(id) { this.els[id].classList.remove("hidden"); }
   closeModal(id) { this.els[id].classList.add("hidden"); }
 
-  // ─── History ───────────────────────────────────────
+  // ─── History ────────────────────────────────────
   pushUndo(action) {
     this.undoStack.push(action);
     this.redoStack = [];
@@ -1097,29 +1199,22 @@ class OkemPDFEditor {
     this.els["btn-redo"].disabled = this.redoStack.length === 0;
   }
 
-  // ─── Keyboard Shortcuts ────────────────────────────
+  // ─── Keyboard Shortcuts ─────────────────────────
   onKeyDown(e) {
-    // CRITICAL: Skip ALL shortcuts when user is typing anywhere
     const el = e.target;
     const tag = el.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable) {
-      return; // let the user type freely
+      return;
     }
-
-    // Skip if a modal is open
     if (document.querySelector(".modal:not(.hidden)")) return;
-
-    // Skip if inline text input is active
     if (this.textInputActive) return;
 
-    // Undo/Redo
     if (e.ctrlKey || e.metaKey) {
       if (e.key === "z") { e.preventDefault(); this.undo(); }
       else if (e.key === "y" || (e.shiftKey && e.key === "z")) { e.preventDefault(); this.redo(); }
       return;
     }
 
-    // Tool shortcuts
     const toolKeys = {
       v: "select", t: "text", i: "image", d: "draw",
       h: "highlight", w: "whiteout", s: "shape",
@@ -1130,7 +1225,6 @@ class OkemPDFEditor {
       return;
     }
 
-    // Delete annotation
     if ((e.key === "Delete" || e.key === "Backspace") && this.selectedAnnotation && this.tool === "select") {
       this.removeAnnotation(this.selectedAnnotation);
       this.selectedAnnotation = null;
@@ -1138,59 +1232,77 @@ class OkemPDFEditor {
       return;
     }
 
-    // Zoom
     if (e.key === "+" || e.key === "=") this.setZoom(this.zoom + 0.25);
     if (e.key === "-") this.setZoom(this.zoom - 0.25);
   }
 
-  // ─── Download PDF ──────────────────────────────────
+  // ─── Font embedding (Liberation Sans) ──────────
+  async getFont(pdfDoc, ann) {
+    const key = ann.italic ? (ann.bold ? "boldItalic" : "italic") : (ann.bold ? "bold" : "regular");
+    if (this.fontCache[key]) return this.fontCache[key];
+    if (!pdfDoc.isFontkitRegistered) {
+      pdfDoc.registerFontkit(fontkit);
+      pdfDoc.isFontkitRegistered = true;
+    }
+    const bytes = await (await fetch(LIB_FONTS[key])).arrayBuffer();
+    const font = await pdfDoc.embedFont(bytes, { subset: true });
+    this.fontCache[key] = font;
+    return font;
+  }
+
+  // ─── Download PDF ───────────────────────────────
   async downloadPDF() {
     const btn = this.els["btn-download"];
-    btn.textContent = "Generating...";
     btn.disabled = true;
+    const original = btn.innerHTML;
+    btn.textContent = "Generating…";
+    this.toast("Generating PDF…", 9999);
 
     try {
       const pdfDoc = await PDFLib.PDFDocument.load(this.pdfBytes);
-      const helveticaFont = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
-      const timesFont = await pdfDoc.embedFont(PDFLib.StandardFonts.TimesRoman);
-      const courierFont = await pdfDoc.embedFont(PDFLib.StandardFonts.Courier);
-      const fontMap = {
-        Helvetica: helveticaFont, "Times New Roman": timesFont,
-        Arial: helveticaFont, Courier: courierFont,
-        Georgia: timesFont, Verdana: helveticaFont,
-      };
+      pdfDoc.registerFontkit(fontkit);
 
       for (let pageNum = 1; pageNum <= this.totalPages; pageNum++) {
         const pageAnns = this.annotations[pageNum] || [];
         if (pageAnns.length === 0) continue;
         const page = pdfDoc.getPage(pageNum - 1);
-        const { width, height } = page.getSize();
+        const { width: PW, height: PH } = page.getSize();
 
         for (const ann of pageAnns) {
           try {
             switch (ann.type) {
               case "text": {
-                const font = fontMap[ann.font] || helveticaFont;
+                const font = await this.getFont(pdfDoc, ann);
+                const top = this.toPageSpace(ann.x, ann.y);
+                const baseline = top.y - (ann.fontSize || 16) * 0.8;
                 page.drawText(ann.text || "", {
-                  x: ann.x, y: height - ann.y,
+                  x: top.x, y: baseline,
                   size: ann.fontSize || 16, font,
                   color: PDFLib.rgb(...this.hexToRgb(ann.color || "#000000")),
                 });
                 break;
               }
               case "highlight": {
+                const a = this.toPageSpace(ann.x, ann.y);
+                const b = this.toPageSpace(ann.x + ann.w, ann.y + ann.h);
+                const x = Math.min(a.x, b.x);
+                const y = Math.min(a.y, b.y);
+                const w = Math.abs(b.x - a.x);
+                const h = Math.abs(b.y - a.y);
                 page.drawRectangle({
-                  x: ann.x, y: height - ann.y - ann.h,
-                  width: ann.w, height: ann.h,
+                  x, y, width: w, height: h,
                   color: PDFLib.rgb(...this.hexToRgb(ann.color || "#ffeb3b")),
                   opacity: 0.35,
                 });
                 break;
               }
               case "whiteout": {
+                const a = this.toPageSpace(ann.x, ann.y);
+                const b = this.toPageSpace(ann.x + ann.w, ann.y + ann.h);
+                const x = Math.min(a.x, b.x);
+                const y = Math.min(a.y, b.y);
                 page.drawRectangle({
-                  x: ann.x, y: height - ann.y - ann.h,
-                  width: ann.w, height: ann.h,
+                  x, y, width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y),
                   color: PDFLib.rgb(1, 1, 1),
                 });
                 break;
@@ -1199,24 +1311,57 @@ class OkemPDFEditor {
                 const color = PDFLib.rgb(...this.hexToRgb(ann.color || "#000000"));
                 const type = ann.shapeType || "rect";
                 if (type === "rect") {
+                  const a = this.toPageSpace(ann.x, ann.y);
+                  const b = this.toPageSpace(ann.x + ann.w, ann.y + ann.h);
                   page.drawRectangle({
-                    x: ann.x, y: height - ann.y - ann.h,
-                    width: ann.w, height: ann.h,
+                    x: Math.min(a.x, b.x), y: Math.min(a.y, b.y),
+                    width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y),
                     borderColor: color, borderWidth: ann.lineWidth || 2,
                     color: ann.fill ? color : undefined,
                     opacity: ann.fill ? 0.2 : 1,
                   });
                 } else if (type === "ellipse") {
+                  const a = this.toPageSpace(ann.x, ann.y);
+                  const b = this.toPageSpace(ann.x + ann.w, ann.y + ann.h);
                   page.drawEllipse({
-                    x: ann.x + ann.w / 2, y: height - ann.y - ann.h / 2,
-                    xScale: ann.w / 2, yScale: ann.h / 2,
+                    x: (a.x + b.x) / 2, y: (a.y + b.y) / 2,
+                    xScale: Math.abs(b.x - a.x) / 2, yScale: Math.abs(b.y - a.y) / 2,
                     borderColor: color, borderWidth: ann.lineWidth || 2,
                   });
                 } else if (type === "line" || type === "arrow") {
+                  const a = this.toPageSpace(ann.startX, ann.startY);
+                  const b = this.toPageSpace(ann.endX, ann.endY);
                   page.drawLine({
-                    start: { x: ann.startX, y: height - ann.startY },
-                    end: { x: ann.endX, y: height - ann.endY },
+                    start: { x: a.x, y: a.y },
+                    end: { x: b.x, y: b.y },
                     thickness: ann.lineWidth || 2, color,
+                  });
+                  if (type === "arrow") {
+                    const ang = Math.atan2(b.y - a.y, b.x - a.x);
+                    const hl = 10;
+                    page.drawLine({
+                      start: { x: b.x, y: b.y },
+                      end: { x: b.x - hl * Math.cos(ang - Math.PI / 6), y: b.y - hl * Math.sin(ang - Math.PI / 6) },
+                      thickness: ann.lineWidth || 2, color,
+                    });
+                    page.drawLine({
+                      start: { x: b.x, y: b.y },
+                      end: { x: b.x - hl * Math.cos(ang + Math.PI / 6), y: b.y - hl * Math.sin(ang + Math.PI / 6) },
+                      thickness: ann.lineWidth || 2, color,
+                    });
+                  }
+                }
+                break;
+              }
+              case "draw": {
+                const color = PDFLib.rgb(...this.hexToRgb(ann.color || "#000000"));
+                for (let i = 1; i < ann.points.length; i++) {
+                  const a = this.toPageSpace(ann.points[i - 1].x, ann.points[i - 1].y);
+                  const b = this.toPageSpace(ann.points[i].x, ann.points[i].y);
+                  page.drawLine({
+                    start: { x: a.x, y: a.y },
+                    end: { x: b.x, y: b.y },
+                    thickness: (ann.lineWidth || 3), color,
                   });
                 }
                 break;
@@ -1226,47 +1371,82 @@ class OkemPDFEditor {
                 let image;
                 try { image = await pdfDoc.embedPng(ann.dataUrl); }
                 catch { image = await pdfDoc.embedJpg(ann.dataUrl); }
+                const a = this.toPageSpace(ann.x, ann.y);
+                const b = this.toPageSpace(ann.x + (ann.w || 200), ann.y + (ann.h || 80));
                 page.drawImage(image, {
-                  x: ann.x, y: height - ann.y - (ann.h || 80),
-                  width: ann.w || 200, height: ann.h || 80,
+                  x: Math.min(a.x, b.x),
+                  y: Math.min(a.y, b.y),
+                  width: Math.abs(b.x - a.x),
+                  height: Math.abs(b.y - a.y),
                 });
                 break;
               }
               case "link": {
+                const a = this.toPageSpace(ann.x, ann.y);
+                const b = this.toPageSpace(ann.x + (ann.w || 150), ann.y + (ann.h || 30));
+                const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+                const w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y);
                 page.drawRectangle({
-                  x: ann.x, y: height - ann.y - (ann.h || 30),
-                  width: ann.w || 150, height: ann.h || 30,
+                  x, y, width: w, height: h,
                   borderColor: PDFLib.rgb(...this.hexToRgb("#5b8cff")),
                   borderWidth: 1, opacity: 0.5,
                 });
+                const font = await this.getFont(pdfDoc, { bold: false, italic: false });
                 page.drawText(ann.url.substring(0, 30), {
-                  x: ann.x + 4, y: height - ann.y - 20,
-                  size: 10, font: helveticaFont,
+                  x: x + 4, y: y + h - 12,
+                  size: 10, font,
                   color: PDFLib.rgb(...this.hexToRgb("#5b8cff")),
+                });
+                const url = ann.url.startsWith("http") ? ann.url : "https://" + ann.url;
+                page.drawLink({
+                  url,
+                  borderColor: PDFLib.rgb(0, 0, 0),
+                  borderWidth: 0,
+                  borderOpacity: 0,
+                  rect: { x, y, width: w, height: h },
                 });
                 break;
               }
               case "note": {
+                const a = this.toPageSpace(ann.x, ann.y);
+                const w = 160, h = 40;
                 page.drawRectangle({
-                  x: ann.x, y: height - ann.y - 40,
-                  width: 160, height: 40,
+                  x: a.x, y: a.y - h,
+                  width: w, height: h,
                   color: PDFLib.rgb(1, 0.97, 0.71),
                   borderColor: PDFLib.rgb(0.95, 0.85, 0.2),
                   borderWidth: 1,
                 });
+                const font = await this.getFont(pdfDoc, { bold: false, italic: false });
                 page.drawText(ann.text.substring(0, 50), {
-                  x: ann.x + 6, y: height - ann.y - 24,
-                  size: 10, font: helveticaFont,
+                  x: a.x + 6, y: a.y - 24,
+                  size: 10, font,
                   color: PDFLib.rgb(0.2, 0.2, 0.2),
                 });
                 break;
               }
             }
-          } catch (err) { console.warn("Error rendering annotation:", err); }
+          } catch (err) {
+            console.warn("Error rendering annotation:", err);
+          }
         }
       }
 
-      const modifiedBytes = await pdfDoc.save();
+      const saveOpts = {};
+      const pw = (this.els["pdf-password"].value || "").trim();
+      if (pw) {
+        saveOpts.encrypt = true;
+        saveOpts.userPassword = pw;
+        saveOpts.ownerPassword = pw;
+        saveOpts.permissions = {
+          printing: "highResolution",
+          modifying: false,
+          copying: false,
+          annotating: false,
+        };
+      }
+
+      const modifiedBytes = await pdfDoc.save(saveOpts);
       const blob = new Blob([modifiedBytes], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -1274,13 +1454,14 @@ class OkemPDFEditor {
       a.download = "edited-document.pdf";
       a.click();
       URL.revokeObjectURL(url);
+      this.toast("PDF downloaded.");
     } catch (err) {
       console.error("Download error:", err);
-      alert("Error generating PDF: " + err.message);
+      this.toast("Error generating PDF: " + err.message);
+    } finally {
+      btn.innerHTML = original;
+      btn.disabled = false;
     }
-
-    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download PDF`;
-    btn.disabled = false;
   }
 
   hexToRgb(hex) {
@@ -1293,7 +1474,7 @@ class OkemPDFEditor {
     ];
   }
 
-  // ─── UI Updates ────────────────────────────────────
+  // ─── UI Updates ─────────────────────────────────
   updateUI() {
     this.els["page-info"].textContent = `${this.currentPage} / ${this.totalPages}`;
     this.els["page-nav"].textContent = `Page ${this.currentPage}`;

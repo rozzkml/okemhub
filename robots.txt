@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://okemhub.vercel.app/sitemap.xml
