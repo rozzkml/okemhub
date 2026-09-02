@@ -44,6 +44,12 @@ const tools = [
     desc: "Convert colors between HEX and RGB.",
     url: "tools/color.html",
   },
+  {
+    name: "PDF Editor",
+    tag: "PDF",
+    desc: "Edit PDF files — add text, images, shapes, signatures, and more.",
+    url: "tools/pdf-editor.html",
+  },
 ];
 
 (function renderTools() {

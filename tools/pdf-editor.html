@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="okemhub PDF Editor — edit PDF files in your browser. Add text, images, shapes, signatures and more. Free, no uploads." />
+  <title>PDF Editor — okemhub</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📄</text></svg>" />
+  <link rel="stylesheet" href="../style.css" />
+  <link rel="stylesheet" href="pdf-editor.css" />
+</head>
+<body>
+  <header class="nav">
+    <a class="brand" href="../index.html">⚡ okemhub</a>
+    <nav class="links">
+      <a href="../index.html#tools">Tools</a>
+      <span class="nav-title">PDF Editor</span>
+    </nav>
+    <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">◐</button>
+  </header>
+
+  <div id="app">
+    <!-- Upload Screen -->
+    <div id="upload-screen" class="upload-screen">
+      <div class="upload-box" id="drop-zone">
+        <div class="upload-icon">📄</div>
+        <h2>Edit your PDF</h2>
+        <p class="muted">Drag & drop a PDF file here, or click to select</p>
+        <label class="btn primary upload-btn">
+          Upload PDF
+          <input type="file" id="file-input" accept=".pdf" hidden />
+        </label>
+        <p class="upload-note">Your files stay private — everything runs in your browser.</p>
+      </div>
+    </div>
+
+    <!-- Editor Screen -->
+    <div id="editor-screen" class="editor-screen hidden">
+      <!-- Toolbar -->
+      <div class="toolbar" id="toolbar">
+        <div class="tool-group">
+          <button class="tool-btn" data-tool="select" title="Select (V)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg>
+            <span>Select</span>
+          </button>
+          <button class="tool-btn active" data-tool="text" title="Add Text (T)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg>
+            <span>Text</span>
+          </button>
+          <button class="tool-btn" data-tool="image" title="Add Image (I)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            <span>Image</span>
+          </button>
+          <button class="tool-btn" data-tool="draw" title="Freehand Draw (D)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/></svg>
+            <span>Draw</span>
+          </button>
+        </div>
+        <div class="tool-group">
+          <button class="tool-btn" data-tool="highlight" title="Highlight (H)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l-6 6v3h9l3-3"/><path d="M22 12l-4.6 4.6a2 2 0 01-2.8 0l-5.2-5.2a2 2 0 010-2.8L14 4"/></svg>
+            <span>Highlight</span>
+          </button>
+          <button class="tool-btn" data-tool="whiteout" title="Whiteout (W)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" fill="currentColor" opacity="0.3"/></svg>
+            <span>Whiteout</span>
+          </button>
+          <button class="tool-btn" data-tool="shape" title="Shapes (S)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><circle cx="17.5" cy="17.5" r="4.5"/><line x1="14" y1="4" x2="21" y2="11"/></svg>
+            <span>Shapes</span>
+          </button>
+          <button class="tool-btn" data-tool="sign" title="Signature (G)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17c3-3 5-8 9-8s3 5 6 5 3-3 3-3"/></svg>
+            <span>Sign</span>
+          </button>
+          <button class="tool-btn" data-tool="link" title="Add Link (L)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+            <span>Link</span>
+          </button>
+          <button class="tool-btn" data-tool="note" title="Sticky Note (N)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15.5 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V8.5L15.5 3z"/><polyline points="14,3 14,8 21,8"/></svg>
+            <span>Note</span>
+          </button>
+        </div>
+        <div class="tool-group tool-options" id="tool-options">
+          <!-- Dynamic options injected by JS -->
+        </div>
+      </div>
+
+      <!-- Main Canvas Area -->
+      <div class="canvas-area" id="canvas-area">
+        <div class="canvas-wrapper" id="canvas-wrapper">
+          <canvas id="pdf-canvas"></canvas>
+          <canvas id="overlay-canvas"></canvas>
+          <div id="annotation-layer"></div>
+        </div>
+      </div>
+
+      <!-- Page Sidebar -->
+      <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <span>Pages</span>
+          <span id="page-info" class="muted">0 / 0</span>
+        </div>
+        <div class="page-list" id="page-list"></div>
+      </div>
+
+      <!-- Bottom Bar -->
+      <div class="bottom-bar">
+        <div class="bottom-left">
+          <button class="icon-btn" id="btn-undo" title="Undo (Ctrl+Z)" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1,4 1,10 7,10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
+          </button>
+          <button class="icon-btn" id="btn-redo" title="Redo (Ctrl+Y)" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23,4 23,10 17,10"/><path d="M20.49 15a9 9 0 11-2.13-9.36L23 10"/></svg>
+          </button>
+          <span class="separator"></span>
+          <button class="icon-btn" id="btn-zoom-out" title="Zoom Out">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+          </button>
+          <span id="zoom-level">100%</span>
+          <button class="icon-btn" id="btn-zoom-in" title="Zoom In">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+          </button>
+          <button class="icon-btn" id="btn-zoom-fit" title="Fit to Width">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/></svg>
+          </button>
+        </div>
+        <div class="bottom-center">
+          <button class="icon-btn" id="btn-prev" title="Previous Page">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15,18 9,12 15,6"/></svg>
+          </button>
+          <span id="page-nav">Page 1</span>
+          <button class="icon-btn" id="btn-next" title="Next Page">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9,18 15,12 9,6"/></svg>
+          </button>
+        </div>
+        <div class="bottom-right">
+          <button class="btn primary" id="btn-download">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download PDF
+          </button>
+          <button class="btn" id="btn-new-file">New File</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Signature Modal -->
+  <div id="sign-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Create Signature</h3>
+        <button class="modal-close" id="sign-close">&times;</button>
+      </div>
+      <div class="modal-tabs">
+        <button class="tab active" data-tab="draw">Draw</button>
+        <button class="tab" data-tab="type">Type</button>
+        <button class="tab" data-tab="upload">Upload</button>
+      </div>
+      <div class="modal-body">
+        <div id="tab-draw" class="tab-content active">
+          <canvas id="sign-canvas" width="400" height="150"></canvas>
+          <button class="btn" id="sign-clear">Clear</button>
+        </div>
+        <div id="tab-type" class="tab-content">
+          <input type="text" id="sign-text" placeholder="Type your name" class="sign-input" />
+          <div id="sign-preview" class="sign-preview"></div>
+        </div>
+        <div id="tab-upload" class="tab-content">
+          <label class="btn">
+            Choose Image
+            <input type="file" id="sign-file" accept="image/*" hidden />
+          </label>
+          <div id="sign-upload-preview" class="sign-preview"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="sign-cancel">Cancel</button>
+        <button class="btn primary" id="sign-apply">Apply Signature</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Link Modal -->
+  <div id="link-modal" class="modal hidden">
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h3>Add Link</h3>
+        <button class="modal-close" id="link-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <label class="field-label">URL</label>
+        <input type="url" id="link-url" placeholder="https://example.com" class="sign-input" />
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="link-cancel">Cancel</button>
+        <button class="btn primary" id="link-apply">Add Link</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Note Modal -->
+  <div id="note-modal" class="modal hidden">
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h3>Add Note</h3>
+        <button class="modal-close" id="note-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <textarea id="note-text" placeholder="Type your note..." class="sign-input" rows="4"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="note-cancel">Cancel</button>
+        <button class="btn primary" id="note-apply">Add Note</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden file input for image tool -->
+  <input type="file" id="image-input" accept="image/*" hidden />
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="../theme.js"></script>
+  <script src="pdf-editor.js"></script>
+</body>
+</html>
