@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="okemhub UUID Generator — create random UUID v4 identifiers locally." />
+  <title>UUID Generator — okemhub</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
+  <link rel="stylesheet" href="../style.css" />
+  <style>
+    .tool { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-top: 18px; }
+    .tool input[type=number] { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 8px 10px; font: inherit; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
+    .tool button { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 9px 16px; font: inherit; font-weight: 600; cursor: pointer; }
+    .tool button:hover { border-color: var(--accent); }
+    .tool button.primary { background: linear-gradient(120deg, var(--accent), var(--accent-2)); color: #fff; border: none; }
+    .opt { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 0.92rem; }
+    .out { margin-top: 14px; }
+    .out pre { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, Menlo, monospace; margin: 0; min-height: 48px; }
+  </style>
+</head>
+<body>
+  <header class="nav">
+    <a class="brand" href="../index.html">⚡ okemhub</a>
+    <nav class="links"><a href="../index.html#tools">Tools</a></nav>
+    <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">◐</button>
+  </header>
+
+  <main id="top">
+    <section class="section">
+      <h2>UUID Generator</h2>
+      <p class="muted">Generate random UUID v4 identifiers locally with the Web Crypto API.</p>
+      <div class="tool">
+        <div class="row">
+          <button class="primary" id="gen">Generate UUID</button>
+          <label class="opt">Count
+            <input type="number" id="count" value="1" min="1" max="50" />
+          </label>
+          <button data-act="copy">Copy all</button>
+        </div>
+        <div class="out"><pre id="out">Click "Generate UUID" to create identifiers.</pre></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>© <span id="year"></span> okemhub</span>
+    <span class="muted">Free client-side tools.</span>
+  </footer>
+
+  <script src="../theme.js"></script>
+  <script>
+    const out = document.getElementById("out");
+    document.getElementById("gen").addEventListener("click", () => {
+      const n = Math.max(1, Math.min(50, parseInt(document.getElementById("count").value) || 1));
+      const arr = [];
+      for (let i = 0; i < n; i++) arr.push(crypto.randomUUID());
+      out.textContent = arr.join("\n");
+    });
+    document.querySelector("[data-act=copy]").addEventListener("click", () =>
+      navigator.clipboard.writeText(out.textContent)
+    );
+  </script>
+</body>
+</html>

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="okemhub Text Utils — change case, count words, characters, and lines." />
+  <title>Text Utils — okemhub</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
+  <link rel="stylesheet" href="../style.css" />
+  <style>
+    .tool { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-top: 18px; }
+    .tool textarea { width: 100%; min-height: 180px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 12px; font: inherit; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    .tool button { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 9px 16px; font: inherit; font-weight: 600; cursor: pointer; }
+    .tool button:hover { border-color: var(--accent); }
+    .tool button.primary { background: linear-gradient(120deg, var(--accent), var(--accent-2)); color: #fff; border: none; }
+    .stats { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 14px; color: var(--muted); font-size: 0.9rem; }
+    .stats b { color: var(--text); }
+  </style>
+</head>
+<body>
+  <header class="nav">
+    <a class="brand" href="../index.html">⚡ okemhub</a>
+    <nav class="links"><a href="../index.html#tools">Tools</a></nav>
+    <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">◐</button>
+  </header>
+
+  <main id="top">
+    <section class="section">
+      <h2>Text Utils</h2>
+      <p class="muted">Change text case and count words, characters, and lines. Runs entirely in your browser.</p>
+      <div class="tool">
+        <textarea id="in" placeholder="Type or paste text here..."></textarea>
+        <div class="row">
+          <button class="primary" data-act="upper">UPPERCASE</button>
+          <button data-act="lower">lowercase</button>
+          <button data-act="title">Title Case</button>
+          <button data-act="copy">Copy</button>
+          <button data-act="clear">Clear</button>
+        </div>
+        <div class="stats">
+          <span>Words: <b id="s-words">0</b></span>
+          <span>Characters: <b id="s-chars">0</b></span>
+          <span>Lines: <b id="s-lines">0</b></span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>© <span id="year"></span> okemhub</span>
+    <span class="muted">Free client-side tools.</span>
+  </footer>
+
+  <script src="../theme.js"></script>
+  <script>
+    const ta = document.getElementById("in");
+    function update() {
+      const t = ta.value;
+      const words = t.trim() ? t.trim().split(/\s+/).length : 0;
+      const chars = t.length;
+      const lines = t ? t.split("\n").length : 0;
+      document.getElementById("s-words").textContent = words;
+      document.getElementById("s-chars").textContent = chars;
+      document.getElementById("s-lines").textContent = lines;
+    }
+    function titleCase(s) {
+      return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+    document.querySelectorAll("[data-act]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const a = b.dataset.act;
+        if (a === "copy") { navigator.clipboard.writeText(ta.value); return; }
+        if (a === "clear") { ta.value = ""; update(); return; }
+        if (a === "upper") ta.value = ta.value.toUpperCase();
+        if (a === "lower") ta.value = ta.value.toLowerCase();
+        if (a === "title") ta.value = titleCase(ta.value);
+        update();
+      })
+    );
+    ta.addEventListener("input", update);
+    update();
+  </script>
+</body>
+</html>

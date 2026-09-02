@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="okemhub — building free functions and hunting bugs. Developer, AI gateway builder, and bug bounty hunter." />
+  <meta name="description" content="okemhub — a collection of free, client-side web tools. No accounts, no uploads, just functions." />
   <meta name="theme-color" content="#0b0e14" />
-  <title>okemhub — free functions & bug hunting</title>
+  <title>okemhub — free web tools</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -13,82 +13,35 @@
   <header class="nav">
     <a class="brand" href="#top">⚡ okemhub</a>
     <nav class="links">
-      <a href="#about">About</a>
-      <a href="#projects">Projects</a>
-      <a href="#security">Security</a>
-      <a href="#contact">Contact</a>
+      <a href="#tools">Tools</a>
     </nav>
     <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">◐</button>
   </header>
 
   <main id="top">
     <section class="hero">
-      <h1>Free functions,<br />fewer gatekeepers.</h1>
+      <h1>Free web tools,<br />no strings attached.</h1>
       <p class="lede">
-        I build open tools that just work in the browser and hunt logic flaws
-        on the web. No accounts, no paywalls — just functions.
+        okemhub is a collection of small, free functions that run entirely in
+        your browser. No accounts, no uploads — just tools that work.
       </p>
-      <div class="cta">
-        <a class="btn primary" href="#projects">See the work</a>
-        <a class="btn ghost" href="https://github.com/okemhub" target="_blank" rel="noopener">GitHub ↗</a>
-      </div>
     </section>
 
-    <section id="about" class="section">
-      <h2>About</h2>
-      <p>
-        I'm <strong>okemhub</strong> — a developer who likes shipping small,
-        useful things and breaking big, careless ones. Most of my projects are
-        single-purpose tools you can run without installing anything. On the
-        side I do bug bounty hunting, focusing on business-logic flaws and
-        access-control bypasses rather than noisy scans.
-      </p>
-      <ul class="stack">
-        <li>Python / FastAPI</li>
-        <li>TypeScript / Vanilla JS</li>
-        <li>FFmpeg.wasm</li>
-        <li>Vercel / GitHub Pages</li>
-        <li>API security &amp; authz testing</li>
-      </ul>
-    </section>
-
-    <section id="projects" class="section">
-      <h2>Projects</h2>
-      <p class="muted">Every tool lives in the okemhub repo — free, self-hostable, and client-side.</p>
-      <div class="grid" id="project-grid">
+    <section id="tools" class="section">
+      <h2>Tools</h2>
+      <p class="muted">All processing happens on your device. Nothing is sent to a server.</p>
+      <div class="grid" id="tool-grid">
         <!-- cards injected by script.js -->
-      </div>
-    </section>
-
-    <section id="security" class="section">
-      <h2>Security &amp; Bug Bounty</h2>
-      <p>
-        I report vulnerabilities responsibly through platforms like HackerOne
-        and Immunefi. My focus areas:
-      </p>
-      <ul class="stack">
-        <li>Broken access control &amp; IDOR</li>
-        <li>Business-logic bypasses</li>
-        <li>Mass assignment / parameter smuggling</li>
-        <li>API version downgrade &amp; deprecated endpoints</li>
-      </ul>
-    </section>
-
-    <section id="contact" class="section">
-      <h2>Contact</h2>
-      <p>Open to collabs, disclosures, and weird tool ideas.</p>
-      <div class="cta">
-        <a class="btn primary" href="https://github.com/okemhub" target="_blank" rel="noopener">GitHub</a>
-        <a class="btn ghost" href="mailto:rozalnakml@gmail.com">Email</a>
       </div>
     </section>
   </main>
 
   <footer class="foot">
     <span>© <span id="year"></span> okemhub</span>
-    <span class="muted">Built free, deployed on Vercel.</span>
+    <span class="muted">Free client-side tools.</span>
   </footer>
 
+  <script src="theme.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

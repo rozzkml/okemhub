@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="okemhub Color Converter — convert colors between HEX and RGB." />
+  <title>Color Converter — okemhub</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
+  <link rel="stylesheet" href="../style.css" />
+  <style>
+    .tool { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-top: 18px; }
+    .tool input[type=text] { width: 100%; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 10px 12px; font: inherit; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    .tool button { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 9px 16px; font: inherit; font-weight: 600; cursor: pointer; }
+    .tool button:hover { border-color: var(--accent); }
+    .tool button.primary { background: linear-gradient(120deg, var(--accent), var(--accent-2)); color: #fff; border: none; }
+    .opt { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 0.92rem; margin-top: 12px; }
+    .out { margin-top: 14px; }
+    .out pre { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, Menlo, monospace; margin: 0; }
+  </style>
+</head>
+<body>
+  <header class="nav">
+    <a class="brand" href="../index.html">⚡ okemhub</a>
+    <nav class="links"><a href="../index.html#tools">Tools</a></nav>
+    <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">◐</button>
+  </header>
+
+  <main id="top">
+    <section class="section">
+      <h2>Color Converter</h2>
+      <p class="muted">Convert colors between HEX and RGB. Runs entirely in your browser.</p>
+      <div class="tool">
+        <label class="opt">HEX
+          <input type="text" id="hex" value="#5b8cff" placeholder="#rrggbb" />
+        </label>
+        <div class="row">
+          <button class="primary" data-act="h2r">HEX → RGB</button>
+          <button data-act="r2h">RGB → HEX</button>
+        </div>
+        <label class="opt">RGB (r, g, b)
+          <input type="text" id="rgb" value="91, 140, 255" placeholder="r, g, b" />
+        </label>
+        <div class="out"><pre id="out">Result appears here.</pre></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>© <span id="year"></span> okemhub</span>
+    <span class="muted">Free client-side tools.</span>
+  </footer>
+
+  <script src="../theme.js"></script>
+  <script>
+    const hex = document.getElementById("hex");
+    const rgb = document.getElementById("rgb");
+    const out = document.getElementById("out");
+    function h2r() {
+      const m = hex.value.trim().replace("#", "");
+      if (!/^[0-9a-fA-F]{6}$/.test(m)) { out.textContent = "Invalid HEX (use #rrggbb)."; return; }
+      const r = parseInt(m.slice(0, 2), 16), g = parseInt(m.slice(2, 4), 16), b = parseInt(m.slice(4, 6), 16);
+      rgb.value = `${r}, ${g}, ${b}`;
+      out.textContent = `rgb(${r}, ${g}, ${b})`;
+    }
+    function r2h() {
+      const p = rgb.value.split(",").map((x) => parseInt(x.trim(), 10));
+      if (p.length !== 3 || p.some((n) => isNaN(n) || n < 0 || n > 255)) {
+        out.textContent = "Invalid RGB (use r, g, b 0-255).";
+        return;
+      }
+      const h = (n) => n.toString(16).padStart(2, "0");
+      hex.value = "#" + h(p[0]) + h(p[1]) + h(p[2]);
+      out.textContent = hex.value;
+    }
+    document.querySelector("[data-act=h2r]").addEventListener("click", h2r);
+    document.querySelector("[data-act=r2h]").addEventListener("click", r2h);
+  </script>
+</body>
+</html>

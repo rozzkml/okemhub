@@ -1,13 +1,25 @@
 # okemhub
 
-Personal site — free functions, fewer gatekeepers.
+A collection of free, client-side web tools. No accounts, no uploads — every
+tool runs entirely in your browser.
 
 Static site (HTML/CSS/JS), deployed via Vercel GitHub sync.
 
 ## Structure
-- `index.html` — page markup
-- `style.css` — theme (dark/light) + layout
-- `script.js` — theme toggle, footer year, project cards
+- `index.html` — tool hub (lists all tools)
+- `style.css` — shared theme (dark/light) + layout
+- `theme.js` — shared theme toggle + footer year
+- `script.js` — tool list + card rendering
+- `tools/` — individual tool pages
+
+## Tools
+- Text Utils — case change + word/char/line count
+- JSON Formatter — pretty-print, minify, validate
+- Base64 — UTF-8 safe encode/decode
+- UUID Generator — random UUID v4 (Web Crypto)
+- Password Generator — strong random passwords (Web Crypto)
+- URL Encode / Decode
+- Color Converter — HEX ⇄ RGB
 
 ## Local preview
 Open `index.html` directly, or serve it:

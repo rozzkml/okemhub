@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="okemhub JSON Formatter — pretty-print, minify, and validate JSON." />
+  <title>JSON Formatter — okemhub</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
+  <link rel="stylesheet" href="../style.css" />
+  <style>
+    .tool { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-top: 18px; }
+    .tool textarea { width: 100%; min-height: 200px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 12px; font: inherit; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    .tool button { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 9px 16px; font: inherit; font-weight: 600; cursor: pointer; }
+    .tool button:hover { border-color: var(--accent); }
+    .tool button.primary { background: linear-gradient(120deg, var(--accent), var(--accent-2)); color: #fff; border: none; }
+    .out { margin-top: 14px; }
+    .out pre { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, Menlo, monospace; margin: 0; }
+  </style>
+</head>
+<body>
+  <header class="nav">
+    <a class="brand" href="../index.html">⚡ okemhub</a>
+    <nav class="links"><a href="../index.html#tools">Tools</a></nav>
+    <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">◐</button>
+  </header>
+
+  <main id="top">
+    <section class="section">
+      <h2>JSON Formatter</h2>
+      <p class="muted">Pretty-print, minify, and validate JSON. Runs entirely in your browser.</p>
+      <div class="tool">
+        <textarea id="in" placeholder="Paste JSON here..."></textarea>
+        <div class="row">
+          <button class="primary" data-act="format">Format</button>
+          <button data-act="minify">Minify</button>
+          <button data-act="copy">Copy</button>
+          <button data-act="clear">Clear</button>
+        </div>
+        <div class="out"><pre id="out">Result appears here.</pre></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>© <span id="year"></span> okemhub</span>
+    <span class="muted">Free client-side tools.</span>
+  </footer>
+
+  <script src="../theme.js"></script>
+  <script>
+    const ta = document.getElementById("in");
+    const out = document.getElementById("out");
+    document.querySelectorAll("[data-act]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const a = b.dataset.act;
+        try {
+          if (!ta.value.trim()) { out.textContent = "(empty)"; return; }
+          if (a === "copy") { navigator.clipboard.writeText(out.textContent); return; }
+          if (a === "clear") { ta.value = ""; out.textContent = "Result appears here."; return; }
+          const obj = JSON.parse(ta.value);
+          if (a === "format") out.textContent = JSON.stringify(obj, null, 2);
+          if (a === "minify") out.textContent = JSON.stringify(obj);
+        } catch (e) {
+          out.textContent = "Error: " + e.message;
+        }
+      })
+    );
+  </script>
+</body>
+</html>
