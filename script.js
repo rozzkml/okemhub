@@ -22,7 +22,7 @@
   if (yearEl) yearEl.textContent = new Date().getFullYear();
 })();
 
-// okem tools — every tool lives INSIDE the okem repo (base repo + Vercel).
+// okemhub tools — every tool lives INSIDE the okemhub repo (base repo + Vercel).
 // To add a tool: push an entry below.
 //   status: "live" -> clickable (internal path like "tools/x.html" or external URL)
 //   status: "soon" -> shows a "Soon" badge, not clickable
@@ -40,13 +40,6 @@ const projects = [
     desc: "Convert video, audio, and images client-side with FFmpeg.wasm.",
     url: "tools/converter.html",
     status: "soon",
-  },
-  {
-    name: "okem base",
-    tag: "Repo",
-    desc: "The base repo and Vercel deployment that hosts every okem tool.",
-    url: "https://github.com/rozzkml/okem",
-    status: "live",
   },
 ];
 
