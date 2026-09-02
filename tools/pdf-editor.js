@@ -83,6 +83,8 @@ class OkemPDFEditor {
     this.signDataUrl = null;
     this.linkPosition = null;
     this.notePosition = null;
+    this.imagePosition = null;
+    this.signPosition = null;
     this.textInputActive = false;
     this.fontCache = {};       // embedded pdf-lib fonts
     this.els = {};
@@ -413,6 +415,10 @@ class OkemPDFEditor {
     this.els["overlay-canvas"].style.cursor = cursors[tool] || "crosshair";
 
     if (tool === "image") {
+      // No canvas click for image (file dialog opens immediately), so default
+      // the drop position to the centre of the current page.
+      const info = this.pageInfos[this.currentPage - 1];
+      if (info) this.imagePosition = { x: Math.round(info.dispW / 2), y: Math.round(info.dispH / 2) };
       this.els["image-input"].click();
     }
   }
@@ -538,6 +544,7 @@ class OkemPDFEditor {
         this.drawStart = pos;
         break;
       case "sign":
+        this.signPosition = pos;
         this.openModal("sign-modal");
         this.initSignCanvas();
         break;
@@ -1130,9 +1137,10 @@ class OkemPDFEditor {
       img.onload = () => {
         const maxW = 300;
         const scale = img.width > maxW ? maxW / img.width : 1;
+        const p = this.imagePosition || { x: 50, y: 50 };
         this.addAnnotation({
           type: "image", page: this.currentPage,
-          x: 50, y: 50,
+          x: p.x, y: p.y,
           w: img.width * scale, h: img.height * scale,
           dataUrl: ev.target.result,
         });
@@ -1200,9 +1208,10 @@ class OkemPDFEditor {
       dataUrl = this.signDataUrl;
     }
     if (!dataUrl) return this.toast("Create a signature first.");
+    const p = this.signPosition || { x: 100, y: 100 };
     this.addAnnotation({
       type: "signature", page: this.currentPage,
-      x: 100, y: 100, w: 200, h: 80, dataUrl,
+      x: p.x, y: p.y, w: 200, h: 80, dataUrl,
     });
     this.renderAnnotations();
     this.closeModal("sign-modal");
