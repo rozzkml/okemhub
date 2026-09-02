@@ -1091,7 +1091,7 @@ class OkemPDFEditor {
       if (text) {
         this.addAnnotation({
           type: "text", page: this.currentPage,
-          x: pos.x, y: pos.y + (opts.fontSize || 16),
+          x: pos.x, y: pos.y,
           text, fontSize: opts.fontSize || 16,
           font: opts.font || "sans",
           color: opts.color || "#000",
