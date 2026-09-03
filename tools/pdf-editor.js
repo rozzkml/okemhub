@@ -907,6 +907,10 @@ class OkemPDFEditor {
         case "link": this.renderLinkAnnotation(ann, layer, z); break;
         case "note": this.renderNoteAnnotation(ann, layer, z); break;
       }
+      // Draw selection indicator for canvas annotations
+      if (this.selectedAnnotation && this.selectedAnnotation.id === ann.id) {
+        this.drawSelectionIndicator(ann, ctx, z);
+      }
     });
   }
 
@@ -925,6 +929,29 @@ class OkemPDFEditor {
       }
       if (ann.type === "shape") this.renderShapeAnnotation(ann, ctx, z);
     });
+  }
+
+  drawSelectionIndicator(ann, ctx, z) {
+    ctx.save();
+    ctx.strokeStyle = "#5b8cff";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    if (ann.type === "draw" && ann.points && ann.points.length > 1) {
+      // Bounding box around freehand path
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of ann.points) {
+        minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+      }
+      const pad = 6;
+      ctx.strokeRect((minX - pad) * z, (minY - pad) * z, (maxX - minX + pad * 2) * z, (maxY - minY + pad * 2) * z);
+    } else if (ann.x !== undefined) {
+      // Rect-based annotations (highlight, whiteout, shape)
+      const pad = 4;
+      ctx.strokeRect((ann.x - pad) * z, (ann.y - pad) * z, (ann.w + pad * 2) * z, (ann.h + pad * 2) * z);
+    }
+    ctx.setLineDash([]);
+    ctx.restore();
   }
 
   renderTextAnnotation(ann, layer, z) {
@@ -1120,12 +1147,41 @@ class OkemPDFEditor {
     this.deselectAnnotation();
     this.selectedAnnotation = ann;
     el.classList.add("selected");
+    this.showDeleteButton();
   }
 
   deselectAnnotation() {
     document.querySelectorAll(".annotation-el.selected").forEach((el) => el.classList.remove("selected"));
     document.querySelectorAll(".resize-handle").forEach((h) => h.remove());
     this.selectedAnnotation = null;
+    this.hideDeleteButton();
+  }
+
+  showDeleteButton() {
+    let btn = document.getElementById("btn-delete-ann");
+    if (!btn) {
+      btn = document.createElement("button");
+      btn.id = "btn-delete-ann";
+      btn.className = "btn-delete-ann";
+      btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3,6 5,6 21,6"/><path d="M19,6v14a2,2,0,0,1-2,2H7a2,2,0,0,1-2-2V6m3,0V4a2,2,0,0,1,2-2h4a2,2,0,0,1,2,2v2"/></svg> Delete`;
+      btn.title = "Delete selected annotation (Del)";
+      btn.addEventListener("click", () => this.deleteSelected());
+      document.getElementById("app").appendChild(btn);
+    }
+    btn.classList.remove("hidden");
+  }
+
+  hideDeleteButton() {
+    const btn = document.getElementById("btn-delete-ann");
+    if (btn) btn.classList.add("hidden");
+  }
+
+  deleteSelected() {
+    if (!this.selectedAnnotation) return;
+    this.removeAnnotation(this.selectedAnnotation);
+    this.selectedAnnotation = null;
+    this.hideDeleteButton();
+    this.renderAnnotations();
   }
 
   attachResize(ann, el, z) {
@@ -1162,11 +1218,20 @@ class OkemPDFEditor {
       const ann = pageAnns[i];
       if (this.hitTest(ann, pos)) {
         const el = document.querySelector(`[data-ann-id="${ann.id}"]`);
-        if (el) this.selectAnnotation(ann, el);
+        if (el) {
+          this.selectAnnotation(ann, el);
+        } else {
+          // Canvas annotation (draw, highlight, whiteout, shape)
+          this.deselectAnnotation();
+          this.selectedAnnotation = ann;
+          this.renderAnnotations(); // redraw with selection indicator
+        }
+        this.showDeleteButton();
         return;
       }
     }
     this.deselectAnnotation();
+    this.hideDeleteButton();
   }
 
   hitTest(ann, pos) {
@@ -1474,9 +1539,8 @@ class OkemPDFEditor {
     }
 
     if ((e.key === "Delete" || e.key === "Backspace") && this.selectedAnnotation && this.tool === "select") {
-      this.removeAnnotation(this.selectedAnnotation);
-      this.selectedAnnotation = null;
-      this.renderAnnotations();
+      e.preventDefault();
+      this.deleteSelected();
       return;
     }
 
