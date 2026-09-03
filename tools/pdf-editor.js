@@ -308,6 +308,34 @@ class OkemPDFEditor {
     els["note-cancel"].addEventListener("click", () => this.closeModal("note-modal"));
     els["note-apply"].addEventListener("click", () => this.applyNote());
 
+    // Annotation layer click handler for select tool
+    const layer = els["annotation-layer"];
+    layer.addEventListener("pointerdown", (e) => {
+      if (this.tool !== "select") return;
+      const annEl = e.target.closest(".annotation-el");
+      if (annEl && annEl.dataset.annId) {
+        // Clicked on a DOM annotation or canvas overlay
+        const annId = parseFloat(annEl.dataset.annId);
+        const pageAnns = this.annotations[this.currentPage] || [];
+        const ann = pageAnns.find(a => a.id === annId);
+        if (ann) {
+          e.stopPropagation();
+          this.selectAnnotation(ann, annEl);
+          if (!annEl.classList.contains("canvas-ann-overlay")) {
+            this.startDrag(e, ann);
+          }
+          if (ann.type === "image" || ann.type === "signature") {
+            this.attachResize(ann, annEl, this.zoom);
+          }
+        }
+      } else {
+        // Clicked on empty area — check canvas annotations via hitTest
+        const rect = this.els["overlay-canvas"].getBoundingClientRect();
+        const pos = { x: (e.clientX - rect.left) / this.zoom, y: (e.clientY - rect.top) / this.zoom };
+        this.handleSelectDown(pos);
+      }
+    });
+
     document.addEventListener("keydown", (e) => this.onKeyDown(e), true);
   }
 
@@ -513,6 +541,8 @@ class OkemPDFEditor {
       sign: "crosshair", link: "crosshair", note: "crosshair",
     };
     this.els["overlay-canvas"].style.cursor = cursors[tool] || "crosshair";
+    // When select tool is active, let clicks pass through to annotation layer
+    this.els["overlay-canvas"].style.pointerEvents = tool === "select" ? "none" : "auto";
 
     if (tool === "image") {
       // No canvas click for image (file dialog opens immediately), so default
@@ -1146,13 +1176,19 @@ class OkemPDFEditor {
   selectAnnotation(ann, el) {
     this.deselectAnnotation();
     this.selectedAnnotation = ann;
-    el.classList.add("selected");
+    if (el) {
+      el.classList.add("selected");
+    } else {
+      // Canvas annotation — create a DOM overlay for drag/resize/delete
+      this.createCanvasOverlay(ann);
+    }
     this.showDeleteButton();
   }
 
   deselectAnnotation() {
     document.querySelectorAll(".annotation-el.selected").forEach((el) => el.classList.remove("selected"));
     document.querySelectorAll(".resize-handle").forEach((h) => h.remove());
+    document.querySelectorAll(".canvas-ann-overlay").forEach((o) => o.remove());
     this.selectedAnnotation = null;
     this.hideDeleteButton();
   }
@@ -1174,6 +1210,118 @@ class OkemPDFEditor {
   hideDeleteButton() {
     const btn = document.getElementById("btn-delete-ann");
     if (btn) btn.classList.add("hidden");
+  }
+
+  // Create a DOM overlay for canvas-rendered annotations (highlight, whiteout, shape, draw)
+  // so they can be dragged, resized, and deleted like DOM annotations.
+  createCanvasOverlay(ann) {
+    const z = this.zoom;
+    const layer = this.els["annotation-layer"];
+    const overlay = document.createElement("div");
+    overlay.className = "canvas-ann-overlay annotation-el";
+    overlay.dataset.annId = ann.id;
+
+    // Calculate bounding box
+    let bx, by, bw, bh;
+    if (ann.type === "draw" && ann.points && ann.points.length > 1) {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of ann.points) {
+        minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+      }
+      bx = minX; by = minY; bw = maxX - minX; bh = maxY - minY;
+    } else {
+      bx = ann.x; by = ann.y; bw = ann.w; bh = ann.h;
+    }
+
+    overlay.style.left = bx * z + "px";
+    overlay.style.top = by * z + "px";
+    overlay.style.width = bw * z + "px";
+    overlay.style.height = bh * z + "px";
+    overlay.style.border = "2px solid #5b8cff";
+    overlay.style.borderRadius = "3px";
+    overlay.style.cursor = "move";
+    overlay.style.pointerEvents = "auto";
+
+    // Resize handle (bottom-right corner)
+    const handle = document.createElement("div");
+    handle.className = "resize-handle";
+    handle.style.position = "absolute";
+    handle.style.right = "-5px";
+    handle.style.bottom = "-5px";
+    handle.style.width = "10px";
+    handle.style.height = "10px";
+    handle.style.background = "#5b8cff";
+    handle.style.borderRadius = "2px";
+    handle.style.cursor = "nwse-resize";
+    handle.style.pointerEvents = "auto";
+    overlay.appendChild(handle);
+
+    // Drag
+    overlay.addEventListener("pointerdown", (e) => {
+      if (e.target === handle) return; // let resize handle it
+      e.stopPropagation();
+      this.startCanvasDrag(e, ann);
+    });
+
+    // Resize
+    handle.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      this.startCanvasResize(e, ann, overlay);
+    });
+
+    layer.appendChild(overlay);
+  }
+
+  startCanvasDrag(e, ann) {
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const isDraw = ann.type === "draw" && ann.points;
+    let origX, origY, origPoints;
+    if (isDraw) {
+      origPoints = ann.points.map(p => ({ ...p }));
+    } else {
+      origX = ann.x; origY = ann.y;
+    }
+    const onMove = (ev) => {
+      const dx = (ev.clientX - startX) / this.zoom;
+      const dy = (ev.clientY - startY) / this.zoom;
+      if (isDraw) {
+        ann.points = origPoints.map(p => ({ x: p.x + dx, y: p.y + dy }));
+      } else {
+        ann.x = origX + dx;
+        ann.y = origY + dy;
+      }
+      this.renderAnnotations();
+    };
+    const onUp = () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+  }
+
+  startCanvasResize(e, ann, overlayEl) {
+    if (ann.type === "draw") return; // can't resize freehand
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const origW = ann.w;
+    const origH = ann.h;
+    const onMove = (ev) => {
+      const dw = (ev.clientX - startX) / this.zoom;
+      const dh = (ev.clientY - startY) / this.zoom;
+      ann.w = Math.max(10, origW + dw);
+      ann.h = Math.max(10, origH + dh);
+      this.renderAnnotations();
+    };
+    const onUp = () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
   }
 
   deleteSelected() {
@@ -1218,20 +1366,11 @@ class OkemPDFEditor {
       const ann = pageAnns[i];
       if (this.hitTest(ann, pos)) {
         const el = document.querySelector(`[data-ann-id="${ann.id}"]`);
-        if (el) {
-          this.selectAnnotation(ann, el);
-        } else {
-          // Canvas annotation (draw, highlight, whiteout, shape)
-          this.deselectAnnotation();
-          this.selectedAnnotation = ann;
-          this.renderAnnotations(); // redraw with selection indicator
-        }
-        this.showDeleteButton();
+        this.selectAnnotation(ann, el); // el may be null for canvas anns
         return;
       }
     }
     this.deselectAnnotation();
-    this.hideDeleteButton();
   }
 
   hitTest(ann, pos) {
@@ -1295,14 +1434,20 @@ class OkemPDFEditor {
 
     const input = document.createElement("textarea");
     input.className = "canvas-text-input";
+    const fs = (opts.fontSize || 16) * z;
     input.style.left = pos.x * z + "px";
     input.style.top = pos.y * z + "px";
-    input.style.fontSize = (opts.fontSize || 16) * z + "px";
+    input.style.fontSize = fs + "px";
+    input.style.lineHeight = "1.2";
     input.style.fontFamily = this._cssFont(opts);
     input.style.color = opts.color || "#000";
     input.style.fontWeight = opts.fontWeight || 400;
     input.style.fontStyle = opts.italic ? "italic" : "normal";
     input.style.letterSpacing = (opts.letterSpacing || 0) + "px";
+    input.style.width = Math.max(fs * 8, 120) + "px";
+    input.style.height = Math.ceil(fs * 1.2) + "px";
+    input.style.padding = "0";
+    input.style.margin = "0";
 
     wrapper.appendChild(input);
 
