@@ -555,7 +555,7 @@ class OkemPDFEditor {
             <option value="mono">Liberation Mono</option>
             <option value="firacode">Fira Code</option>
           </optgroup>
-        </select>`)
+        </select>`)}
         ${sec("Size", `<input type="number" id="opt-size-num" min="1" max="200" value="16" class="opt-size-num" />
           <input type="range" id="opt-size" min="1" max="200" value="16" />`)}
         ${sec("Weight", `<input type="range" id="opt-weight" min="100" max="900" step="100" value="400" />
