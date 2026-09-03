@@ -113,6 +113,49 @@ const LIB_FONTS = {
   },
 };
 
+// ─── Session persistence (IndexedDB) ────────────────────────────────────────
+const DB_NAME = "okemhub-pdf-editor";
+const DB_STORE = "sessions";
+const SESSION_KEY = "current";
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(DB_STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function saveSession(data) {
+  try {
+    const db = await openDB();
+    const tx = db.transaction(DB_STORE, "readwrite");
+    tx.objectStore(DB_STORE).put(data, SESSION_KEY);
+    await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej; });
+  } catch (e) { console.warn("Session save failed:", e); }
+}
+
+async function loadSession() {
+  try {
+    const db = await openDB();
+    const tx = db.transaction(DB_STORE, "readonly");
+    const req = tx.objectStore(DB_STORE).get(SESSION_KEY);
+    return new Promise((res) => {
+      req.onsuccess = () => res(req.result || null);
+      req.onerror = () => res(null);
+    });
+  } catch (e) { return null; }
+}
+
+async function clearSession() {
+  try {
+    const db = await openDB();
+    const tx = db.transaction(DB_STORE, "readwrite");
+    tx.objectStore(DB_STORE).delete(SESSION_KEY);
+  } catch (e) { /* noop */ }
+}
+
 // ─── fontkit API bridge ─────────────────────────────────────────────────────
 // The @cantoo/pdf-lib fork prefers `subset.encode()` returning font bytes, but
 // @pdf-lib/fontkit@1.1.1 ships `encode(stream)` (writes into a restructure
@@ -202,6 +245,8 @@ class OkemPDFEditor {
     }
     this.cacheDom();
     this.bindEvents();
+    // Try to restore previous session
+    this.restoreSession();
   }
 
   cacheDom() {
@@ -359,6 +404,7 @@ class OkemPDFEditor {
     this.toast("Loading PDF…", 9999);
     try {
       this.pdfBytes = await file.arrayBuffer();
+      this._fileName = file.name || "document.pdf";
       this.pdfDoc = await pdfjsLib.getDocument({ data: this.pdfBytes.slice(0) }).promise;
       this.totalPages = this.pdfDoc.numPages;
       this.pageInfos = [];
@@ -407,10 +453,12 @@ class OkemPDFEditor {
     this.redoStack = [];
     this.currentPage = 1;
     this.fontCache = {};
+    this._fileName = null;
     this.els["editor-screen"].classList.add("hidden");
     this.els["upload-screen"].classList.remove("hidden");
     this.els["file-input"].value = "";
     this.els["pdf-password"].value = "";
+    clearSession();
   }
 
   // ─── Rendering ──────────────────────────────────
@@ -897,6 +945,7 @@ class OkemPDFEditor {
     if (!this.annotations[this.currentPage]) this.annotations[this.currentPage] = [];
     this.annotations[this.currentPage].push(ann);
     this.pushUndo({ type: "add", annotation: ann, page: this.currentPage });
+    this.autoSave();
   }
 
   removeAnnotation(ann) {
@@ -906,6 +955,7 @@ class OkemPDFEditor {
     if (idx !== -1) {
       pageAnns.splice(idx, 1);
       this.pushUndo({ type: "remove", annotation: ann, page: ann.page });
+      this.autoSave();
     }
   }
 
@@ -1004,6 +1054,8 @@ class OkemPDFEditor {
       if (!ann.text.trim()) {
         this.removeAnnotation(ann);
         this.renderAnnotations();
+      } else {
+        this.autoSave();
       }
     });
     el.addEventListener("pointerdown", (e) => {
@@ -1298,6 +1350,7 @@ class OkemPDFEditor {
     const onUp = () => {
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
+      this.autoSave();
     };
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", onUp);
@@ -1319,6 +1372,7 @@ class OkemPDFEditor {
     const onUp = () => {
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
+      this.autoSave();
     };
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", onUp);
@@ -1330,6 +1384,76 @@ class OkemPDFEditor {
     this.selectedAnnotation = null;
     this.hideDeleteButton();
     this.renderAnnotations();
+  }
+
+  // ─── Auto-save / Restore session ─────────────────────────────────────────
+  _saveTimer = null;
+  autoSave() {
+    clearTimeout(this._saveTimer);
+    this._saveTimer = setTimeout(() => this._doSave(), 800);
+  }
+
+  async _doSave() {
+    if (!this.pdfBytes) return;
+    try {
+      // Serialize annotations (strip non-serializable refs)
+      const anns = {};
+      for (const [pg, list] of Object.entries(this.annotations)) {
+        anns[pg] = list.map(a => {
+          const copy = { ...a };
+          // draw points are plain objects, safe to clone
+          return copy;
+        });
+      }
+      await saveSession({
+        pdfBytes: Array.from(new Uint8Array(this.pdfBytes)),
+        annotations: anns,
+        currentPage: this.currentPage,
+        zoom: this.zoom,
+        fileName: this._fileName || "document.pdf",
+        savedAt: Date.now(),
+      });
+    } catch (e) { console.warn("Auto-save failed:", e); }
+  }
+
+  async restoreSession() {
+    const session = await loadSession();
+    if (!session || !session.pdfBytes) return false;
+    try {
+      this.pdfBytes = new Uint8Array(session.pdfBytes).buffer;
+      this.pdfDoc = await pdfjsLib.getDocument({ data: this.pdfBytes.slice(0) }).promise;
+      this.totalPages = this.pdfDoc.numPages;
+      this.pageInfos = [];
+      this.annotations = session.annotations || {};
+      this.undoStack = [];
+      this.redoStack = [];
+      this.currentPage = session.currentPage || 1;
+      this.zoom = session.zoom || 1.5;
+      this._fileName = session.fileName || "document.pdf";
+      this.fontCache = {};
+
+      for (let i = 1; i <= this.totalPages; i++) {
+        const page = await this.pdfDoc.getPage(i);
+        const rotation = page.rotate || 0;
+        const vp = page.getViewport({ scale: 1, rotation });
+        this.pageInfos.push({
+          width: vp.width, height: vp.height, rotation,
+          dispW: vp.width, dispH: vp.height, viewport1: vp,
+        });
+      }
+
+      this.els["upload-screen"].classList.add("hidden");
+      this.els["editor-screen"].classList.remove("hidden");
+      this.renderThumbnails();
+      this.renderPage();
+      this.updateUI();
+      this.toast("Session restored.");
+      return true;
+    } catch (e) {
+      console.warn("Session restore failed:", e);
+      await clearSession();
+      return false;
+    }
   }
 
   attachResize(ann, el, z) {
@@ -1353,6 +1477,7 @@ class OkemPDFEditor {
         document.removeEventListener("pointermove", move);
         document.removeEventListener("pointerup", up);
         this.renderAnnotations();
+        this.autoSave();
       };
       document.addEventListener("pointermove", move);
       document.addEventListener("pointerup", up);
@@ -1419,6 +1544,7 @@ class OkemPDFEditor {
     const onUp = () => {
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
+      this.autoSave();
     };
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", onUp);
@@ -1635,6 +1761,7 @@ class OkemPDFEditor {
     this.redoStack.push(action);
     this.renderAnnotations();
     this.updateHistoryButtons();
+    this.autoSave();
   }
 
   redo() {
@@ -1650,6 +1777,7 @@ class OkemPDFEditor {
     this.undoStack.push(action);
     this.renderAnnotations();
     this.updateHistoryButtons();
+    this.autoSave();
   }
 
   updateHistoryButtons() {
