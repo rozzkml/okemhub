@@ -6,11 +6,27 @@
 
 /* global pdfjsLib, PDFLib, fontkit */
 
+// Font files keyed by family → style. The vendor bundle ships Serif/Mono only
+// as Regular+Bold, so their italic variants fall back to the upright/bold file.
 const LIB_FONTS = {
-  regular: "../vendor/fonts/LiberationSans-Regular.ttf",
-  bold: "../vendor/fonts/LiberationSans-Bold.ttf",
-  italic: "../vendor/fonts/LiberationSans-Italic.ttf",
-  boldItalic: "../vendor/fonts/LiberationSans-BoldItalic.ttf",
+  sans: {
+    regular: "../vendor/fonts/LiberationSans-Regular.ttf",
+    bold: "../vendor/fonts/LiberationSans-Bold.ttf",
+    italic: "../vendor/fonts/LiberationSans-Italic.ttf",
+    boldItalic: "../vendor/fonts/LiberationSans-BoldItalic.ttf",
+  },
+  serif: {
+    regular: "../vendor/fonts/LiberationSerif-Regular.ttf",
+    bold: "../vendor/fonts/LiberationSerif-Bold.ttf",
+    italic: "../vendor/fonts/LiberationSerif-Regular.ttf",
+    boldItalic: "../vendor/fonts/LiberationSerif-Bold.ttf",
+  },
+  mono: {
+    regular: "../vendor/fonts/LiberationMono-Regular.ttf",
+    bold: "../vendor/fonts/LiberationMono-Bold.ttf",
+    italic: "../vendor/fonts/LiberationMono-Regular.ttf",
+    boldItalic: "../vendor/fonts/LiberationMono-Bold.ttf",
+  },
 };
 
 // ─── fontkit API bridge ─────────────────────────────────────────────────────
@@ -1327,15 +1343,17 @@ class OkemPDFEditor {
     if (e.key === "-") this.setZoom(this.zoom - 0.25);
   }
 
-  // ─── Font embedding (Liberation Sans) ──────────
+  // ─── Font embedding (Liberation Sans/Serif/Mono) ─
   async getFont(pdfDoc, ann) {
-    const key = ann.italic ? (ann.bold ? "boldItalic" : "italic") : (ann.bold ? "bold" : "regular");
+    const family = ann.font || "sans";
+    const styleKey = ann.italic ? (ann.bold ? "boldItalic" : "italic") : (ann.bold ? "bold" : "regular");
+    const key = family + ":" + styleKey;
     if (this.fontCache[key]) return this.fontCache[key];
     if (!pdfDoc.isFontkitRegistered) {
       pdfDoc.registerFontkit(wrapFontkit(fontkit));
       pdfDoc.isFontkitRegistered = true;
     }
-    const bytes = await (await fetch(LIB_FONTS[key])).arrayBuffer();
+    const bytes = await (await fetch(LIB_FONTS[family][styleKey])).arrayBuffer();
     const font = await pdfDoc.embedFont(bytes, { subset: true });
     this.fontCache[key] = font;
     return font;
