@@ -6,7 +6,7 @@
 const fs = require("fs");
 const path = require("path");
 const Core = require("./pdf-text-editor.core.js");
-const { PDFDocument } = require("../vendor/pdf-lib.min.js");
+const { PDFDocument } = require("../vendor/pdf-lib/pdf-lib.min.js");
 
 const PDF_PATH = path.join(__dirname, "..", "vendor", "sample.pdf");
 const tmp = path.join(__dirname, "_te_out.pdf");

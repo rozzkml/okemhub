@@ -17,7 +17,7 @@
 (function (global) {
   const PDFLib =
     global.PDFLib ||
-    (typeof require !== "undefined" ? require("../vendor/pdf-lib.min.js") : null);
+    (typeof require !== "undefined" ? require("../vendor/pdf-lib/pdf-lib.min.js") : null);
   if (!PDFLib) throw new Error("pdf-lib not found for pdf-text-editor core");
   const { PDFDocument, rgb, StandardFonts } = PDFLib;
 
