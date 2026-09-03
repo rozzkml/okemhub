@@ -27,6 +27,90 @@ const LIB_FONTS = {
     italic: "../vendor/fonts/LiberationMono-Regular.ttf",
     boldItalic: "../vendor/fonts/LiberationMono-Bold.ttf",
   },
+  roboto: {
+    regular: "../vendor/fonts/Roboto-Regular.ttf",
+    bold: "../vendor/fonts/Roboto-Bold.ttf",
+    italic: "../vendor/fonts/Roboto-Italic.ttf",
+    boldItalic: "../vendor/fonts/Roboto-BoldItalic.ttf",
+  },
+  opensans: {
+    regular: "../vendor/fonts/OpenSans-Regular.ttf",
+    bold: "../vendor/fonts/OpenSans-Bold.ttf",
+    italic: "../vendor/fonts/OpenSans-Italic.ttf",
+    boldItalic: "../vendor/fonts/OpenSans-BoldItalic.ttf",
+  },
+  montserrat: {
+    regular: "../vendor/fonts/Montserrat-Regular.ttf",
+    bold: "../vendor/fonts/Montserrat-Bold.ttf",
+    italic: "../vendor/fonts/Montserrat-Italic.ttf",
+    boldItalic: "../vendor/fonts/Montserrat-BoldItalic.ttf",
+  },
+  lora: {
+    regular: "../vendor/fonts/Lora-Regular.ttf",
+    bold: "../vendor/fonts/Lora-Bold.ttf",
+    italic: "../vendor/fonts/Lora-Italic.ttf",
+    boldItalic: "../vendor/fonts/Lora-BoldItalic.ttf",
+  },
+  merriweather: {
+    regular: "../vendor/fonts/Merriweather-Regular.ttf",
+    bold: "../vendor/fonts/Merriweather-Bold.ttf",
+    italic: "../vendor/fonts/Merriweather-Italic.ttf",
+    boldItalic: "../vendor/fonts/Merriweather-BoldItalic.ttf",
+  },
+  playfair: {
+    regular: "../vendor/fonts/PlayfairDisplay-Regular.ttf",
+    bold: "../vendor/fonts/PlayfairDisplay-Bold.ttf",
+    italic: "../vendor/fonts/PlayfairDisplay-Italic.ttf",
+    boldItalic: "../vendor/fonts/PlayfairDisplay-BoldItalic.ttf",
+  },
+  firacode: {
+    regular: "../vendor/fonts/FiraCode-Regular.ttf",
+    bold: "../vendor/fonts/FiraCode-Bold.ttf",
+    italic: "../vendor/fonts/FiraCode-Regular.ttf",
+    boldItalic: "../vendor/fonts/FiraCode-Bold.ttf",
+  },
+  ebgaramond: {
+    regular: "../vendor/fonts/EBGaramond-Regular.ttf",
+    bold: "../vendor/fonts/EBGaramond-Bold.ttf",
+    italic: "../vendor/fonts/EBGaramond-Italic.ttf",
+    boldItalic: "../vendor/fonts/EBGaramond-BoldItalic.ttf",
+  },
+  crimsontext: {
+    regular: "../vendor/fonts/CrimsonText-Regular.ttf",
+    bold: "../vendor/fonts/CrimsonText-Bold.ttf",
+    italic: "../vendor/fonts/CrimsonText-Italic.ttf",
+    boldItalic: "../vendor/fonts/CrimsonText-BoldItalic.ttf",
+  },
+  ptserif: {
+    regular: "../vendor/fonts/PTSerif-Regular.ttf",
+    bold: "../vendor/fonts/PTSerif-Bold.ttf",
+    italic: "../vendor/fonts/PTSerif-Italic.ttf",
+    boldItalic: "../vendor/fonts/PTSerif-BoldItalic.ttf",
+  },
+  notoserif: {
+    regular: "../vendor/fonts/NotoSerif-Regular.ttf",
+    bold: "../vendor/fonts/NotoSerif-Bold.ttf",
+    italic: "../vendor/fonts/NotoSerif-Italic.ttf",
+    boldItalic: "../vendor/fonts/NotoSerif-BoldItalic.ttf",
+  },
+  librebaskerville: {
+    regular: "../vendor/fonts/LibreBaskerville-Regular.ttf",
+    bold: "../vendor/fonts/LibreBaskerville-Bold.ttf",
+    italic: "../vendor/fonts/LibreBaskerville-Italic.ttf",
+    boldItalic: "../vendor/fonts/LibreBaskerville-Regular.ttf",
+  },
+  ptsans: {
+    regular: "../vendor/fonts/PTSans-Regular.ttf",
+    bold: "../vendor/fonts/PTSans-Bold.ttf",
+    italic: "../vendor/fonts/PTSans-Italic.ttf",
+    boldItalic: "../vendor/fonts/PTSans-BoldItalic.ttf",
+  },
+  sourceserif: {
+    regular: "../vendor/fonts/SourceSerif-Regular.ttf",
+    bold: "../vendor/fonts/SourceSerif-Bold.ttf",
+    italic: "../vendor/fonts/SourceSerif-Italic.ttf",
+    boldItalic: "../vendor/fonts/SourceSerif-BoldItalic.ttf",
+  },
 };
 
 // ─── fontkit API bridge ─────────────────────────────────────────────────────
@@ -448,18 +532,51 @@ class OkemPDFEditor {
     if (t === "text") {
       c.innerHTML = `
         ${sec("Font", `<select id="opt-font">
-          <option value="sans">Sans (default)</option>
-          <option value="serif">Serif</option>
-          <option value="mono">Mono</option>
-        </select>`)}
-        ${sec("Size", `<input type="range" id="opt-size" min="8" max="72" value="16" />
-          <span class="opt-val" id="opt-size-val">16</span>`)}
+          <optgroup label="Sans-Serif">
+            <option value="sans">Sans (default)</option>
+            <option value="roboto">Roboto</option>
+            <option value="opensans">Open Sans</option>
+            <option value="montserrat">Montserrat</option>
+            <option value="ptsans">PT Sans</option>
+          </optgroup>
+          <optgroup label="Serif">
+            <option value="serif">Liberation Serif</option>
+            <option value="lora">Lora</option>
+            <option value="merriweather">Merriweather</option>
+            <option value="playfair">Playfair Display</option>
+            <option value="ebgaramond">EB Garamond</option>
+            <option value="crimsontext">Crimson Text</option>
+            <option value="ptserif">PT Serif</option>
+            <option value="notoserif">Noto Serif</option>
+            <option value="librebaskerville">Libre Baskerville</option>
+            <option value="sourceserif">Source Serif</option>
+          </optgroup>
+          <optgroup label="Monospace">
+            <option value="mono">Liberation Mono</option>
+            <option value="firacode">Fira Code</option>
+          </optgroup>
+        </select>`)
+        ${sec("Size", `<input type="number" id="opt-size-num" min="1" max="200" value="16" class="opt-size-num" />
+          <input type="range" id="opt-size" min="1" max="200" value="16" />`)}
+        ${sec("Weight", `<input type="range" id="opt-weight" min="100" max="900" step="100" value="400" />
+          <span class="opt-val" id="opt-weight-val">400</span>`)}
         ${sec("Color", `<input type="color" id="opt-color" value="#000000" />`)}
-        ${sec("Style", `<label><input type="checkbox" id="opt-bold" /> <b>B</b></label>
-          <label><input type="checkbox" id="opt-italic" /> <i>I</i></label>`)}
+        ${sec("Style", `<label><input type="checkbox" id="opt-italic" /> <i>I</i></label>`)}
+        ${sec("Spacing", `<input type="range" id="opt-spacing" min="-2" max="10" step="0.5" value="0" />
+          <span class="opt-val" id="opt-spacing-val">0</span>`)}
       `;
-      c.querySelector("#opt-size").addEventListener("input", (e) => {
-        c.querySelector("#opt-size-val").textContent = e.target.value;
+      const sizeSlider = c.querySelector("#opt-size");
+      const sizeNum = c.querySelector("#opt-size-num");
+      sizeSlider.addEventListener("input", (e) => { sizeNum.value = e.target.value; });
+      sizeNum.addEventListener("input", (e) => { sizeSlider.value = e.target.value; });
+      c.querySelector("#opt-weight").addEventListener("input", (e) => {
+        const v = e.target.value;
+        c.querySelector("#opt-weight-val").textContent = v;
+        const labels = {100:"Thin",200:"ExtraLight",300:"Light",400:"Regular",500:"Medium",600:"SemiBold",700:"Bold",800:"ExtraBold",900:"Black"};
+        c.querySelector("#opt-weight-val").title = labels[v] || "";
+      });
+      c.querySelector("#opt-spacing").addEventListener("input", (e) => {
+        c.querySelector("#opt-spacing-val").textContent = e.target.value;
       });
     } else if (t === "draw") {
       c.innerHTML = `
@@ -510,21 +627,23 @@ class OkemPDFEditor {
     const opts = {};
     const el = (id) => document.getElementById(id);
     const color = el("opt-color");
-    const size = el("opt-size");
+    const size = el("opt-size-num") || el("opt-size");
     const font = el("opt-font");
     const width = el("opt-width");
     const shape = el("opt-shape");
-    const bold = el("opt-bold");
+    const weight = el("opt-weight");
     const italic = el("opt-italic");
     const fill = el("opt-fill");
+    const spacing = el("opt-spacing");
     if (color) opts.color = color.value;
     if (size) opts.fontSize = parseInt(size.value);
     if (font) opts.font = font.value;
     if (width) opts.lineWidth = parseInt(width.value);
     if (shape) opts.shapeType = shape.value;
-    if (bold) opts.bold = bold.checked;
+    if (weight) opts.fontWeight = parseInt(weight.value);
     if (italic) opts.italic = italic.checked;
     if (fill) opts.fill = fill.checked;
+    if (spacing) opts.letterSpacing = parseFloat(spacing.value);
     return opts;
   }
 
@@ -818,8 +937,9 @@ class OkemPDFEditor {
     el.style.fontSize = ann.fontSize * z + "px";
     el.style.fontFamily = this._cssFont(ann);
     el.style.color = ann.color || "#000";
-    el.style.fontWeight = ann.bold ? "bold" : "normal";
+    el.style.fontWeight = ann.fontWeight || (ann.bold ? 700 : 400);
     el.style.fontStyle = ann.italic ? "italic" : "normal";
+    el.style.letterSpacing = ((ann.letterSpacing || 0) * z) + "px";
     el.dataset.annId = ann.id;
 
     el.addEventListener("blur", () => {
@@ -840,10 +960,26 @@ class OkemPDFEditor {
   }
 
   _cssFont(ann) {
-    const fam = ann.font === "serif" ? "Georgia, serif"
-      : ann.font === "mono" ? "monospace"
-      : "system-ui, sans-serif";
-    return fam;
+    const fontMap = {
+      sans: "'Liberation Sans', system-ui, sans-serif",
+      serif: "'Liberation Serif', Georgia, serif",
+      mono: "'Liberation Mono', monospace",
+      roboto: "'Roboto', 'Liberation Sans', system-ui, sans-serif",
+      opensans: "'Open Sans', 'Liberation Sans', system-ui, sans-serif",
+      montserrat: "'Montserrat', 'Liberation Sans', system-ui, sans-serif",
+      ptsans: "'PT Sans', 'Liberation Sans', system-ui, sans-serif",
+      lora: "'Lora', 'Liberation Serif', Georgia, serif",
+      merriweather: "'Merriweather', 'Liberation Serif', Georgia, serif",
+      playfair: "'Playfair Display', 'Liberation Serif', Georgia, serif",
+      ebgaramond: "'EB Garamond', 'Liberation Serif', Georgia, serif",
+      crimsontext: "'Crimson Text', 'Liberation Serif', Georgia, serif",
+      ptserif: "'PT Serif', 'Liberation Serif', Georgia, serif",
+      notoserif: "'Noto Serif', 'Liberation Serif', Georgia, serif",
+      librebaskerville: "'Libre Baskerville', 'Liberation Serif', Georgia, serif",
+      sourceserif: "'Source Serif 4', 'Liberation Serif', Georgia, serif",
+      firacode: "'Fira Code', 'Liberation Mono', monospace",
+    };
+    return fontMap[ann.font] || "'Liberation Sans', system-ui, sans-serif";
   }
 
   renderImageAnnotation(ann, layer, z) {
@@ -1035,7 +1171,9 @@ class OkemPDFEditor {
 
   hitTest(ann, pos) {
     if (ann.type === "text") {
-      const approxW = (ann.text || "").length * ann.fontSize * 0.6;
+      const charW = ann.fontSize * 0.6;
+      const spacing = ann.letterSpacing || 0;
+      const approxW = (ann.text || "").length * charW + Math.max(0, (ann.text || "").length - 1) * spacing;
       const approxH = ann.fontSize * 1.4;
       return pos.x >= ann.x && pos.x <= ann.x + approxW / this.zoom &&
              pos.y >= ann.y - approxH / this.zoom && pos.y <= ann.y;
@@ -1097,8 +1235,9 @@ class OkemPDFEditor {
     input.style.fontSize = (opts.fontSize || 16) * z + "px";
     input.style.fontFamily = this._cssFont(opts);
     input.style.color = opts.color || "#000";
-    input.style.fontWeight = opts.bold ? "bold" : "normal";
+    input.style.fontWeight = opts.fontWeight || 400;
     input.style.fontStyle = opts.italic ? "italic" : "normal";
+    input.style.letterSpacing = (opts.letterSpacing || 0) + "px";
 
     wrapper.appendChild(input);
 
@@ -1118,7 +1257,9 @@ class OkemPDFEditor {
           text, fontSize: opts.fontSize || 16,
           font: opts.font || "sans",
           color: opts.color || "#000",
-          bold: opts.bold || false, italic: opts.italic || false,
+          fontWeight: opts.fontWeight || 400,
+          italic: opts.italic || false,
+          letterSpacing: opts.letterSpacing || 0,
         });
         this.renderAnnotations();
       }
@@ -1346,7 +1487,9 @@ class OkemPDFEditor {
   // ─── Font embedding (Liberation Sans/Serif/Mono) ─
   async getFont(pdfDoc, ann) {
     const family = ann.font || "sans";
-    const styleKey = ann.italic ? (ann.bold ? "boldItalic" : "italic") : (ann.bold ? "bold" : "regular");
+    const weight = ann.fontWeight || (ann.bold ? 700 : 400);
+    const isBold = weight >= 600;
+    const styleKey = ann.italic ? (isBold ? "boldItalic" : "italic") : (isBold ? "bold" : "regular");
     const key = family + ":" + styleKey;
     if (this.fontCache[key]) return this.fontCache[key];
     if (!pdfDoc.isFontkitRegistered) {
@@ -1384,13 +1527,27 @@ class OkemPDFEditor {
               case "text": {
                 const font = await this.getFont(pdfDoc, ann);
                 const size = ann.fontSize || 16;
+                const spacing = ann.letterSpacing || 0;
                 // ann.y is the top of the display box; shift down to baseline
                 // in display space, then map.
                 const p = this.toPageSpace(ann.x, ann.y + size * 0.8, pageNum);
-                page.drawText(ann.text || "", {
-                  x: p.x, y: p.y, size, font, rotate: rot,
-                  color: PDFLib.rgb(...this.hexToRgb(ann.color || "#000000")),
-                });
+                const color = PDFLib.rgb(...this.hexToRgb(ann.color || "#000000"));
+                if (spacing !== 0 && (ann.text || "").length > 1) {
+                  // Draw char-by-char with letter-spacing
+                  const text = ann.text || "";
+                  let curX = p.x;
+                  for (let ci = 0; ci < text.length; ci++) {
+                    page.drawText(text[ci], {
+                      x: curX, y: p.y, size, font, rotate: rot, color,
+                    });
+                    const charW = font.widthOfTextAtSize(text[ci], size);
+                    curX += charW + spacing;
+                  }
+                } else {
+                  page.drawText(ann.text || "", {
+                    x: p.x, y: p.y, size, font, rotate: rot, color,
+                  });
+                }
                 break;
               }
               case "highlight": {
