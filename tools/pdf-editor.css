@@ -80,9 +80,17 @@ body {
 .upload-screen {
   flex: 1;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 40px;
+  overflow-y: auto;
+}
+.upload-content {
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
 .upload-box {
@@ -91,7 +99,6 @@ body {
   border: 2px dashed var(--border);
   border-radius: 20px;
   background: var(--surface);
-  max-width: 500px;
   width: 100%;
   transition: border-color 0.2s, background 0.2s;
 }
@@ -800,46 +807,81 @@ body {
 .btn-delete-ann:hover { background: #c62828; }
 .btn-delete-ann.hidden { display: none; }
 
-/* ─── History List ─── */
+/* ─── Upload Screen History ─── */
+.history-section {
+  width: 100%;
+}
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.history-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text);
+}
+.btn-sm {
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-sm:hover {
+  color: #e53935;
+  border-color: #e53935;
+}
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 .history-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px;
+  padding: 14px 16px;
   border: 1px solid var(--border);
-  border-radius: 10px;
-  margin-bottom: 8px;
-  background: var(--surface-2);
-  transition: border-color 0.15s;
+  border-radius: 12px;
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.1s;
 }
 .history-item:hover {
   border-color: var(--accent);
+  transform: translateY(-1px);
 }
 .history-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--accent);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  font-size: 1.1rem;
+  font-size: 1.2rem;
 }
 .history-info {
   flex: 1;
   min-width: 0;
 }
 .history-name {
-  font-size: 0.88rem;
+  font-size: 0.9rem;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .history-meta {
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   color: var(--muted);
   margin-top: 2px;
 }
@@ -849,33 +891,35 @@ body {
   flex-shrink: 0;
 }
 .history-btn {
-  padding: 6px 10px;
-  border-radius: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: transparent;
   color: var(--text);
-  font-size: 0.78rem;
+  font-size: 0.8rem;
+  font-weight: 600;
   font-family: inherit;
   cursor: pointer;
   transition: all 0.15s;
 }
 .history-btn:hover {
   border-color: var(--accent);
-  background: var(--surface);
+  background: var(--surface-2);
 }
 .history-btn.delete {
   color: #e53935;
-  border-color: #e5393533;
+  border-color: transparent;
+  background: transparent;
 }
 .history-btn.delete:hover {
-  background: #e5393522;
-  border-color: #e53935;
+  background: #e5393518;
+  border-color: #e5393544;
 }
 .history-empty {
   text-align: center;
-  padding: 24px;
+  padding: 20px;
   color: var(--muted);
-  font-size: 0.88rem;
+  font-size: 0.85rem;
 }
 
 /* Canvas annotation overlay */
@@ -1044,8 +1088,12 @@ body {
   .brand-icon { width: 28px; height: 28px; border-radius: 7px; }
   .brand-text { font-size: 0.9rem; letter-spacing: 1px; }
 
-  .upload-screen { padding: 20px; }
+  .upload-screen { padding: 16px; align-items: flex-start; }
+  .upload-content { gap: 20px; }
   .upload-box { padding: 36px 20px; }
+  .history-item { padding: 12px; }
+  .history-icon { width: 36px; height: 36px; border-radius: 8px; font-size: 1rem; }
+  .history-name { font-size: 0.82rem; }
   .upload-icon { font-size: 3rem; margin-bottom: 12px; }
   .upload-box h2 { font-size: 1.2rem; }
 

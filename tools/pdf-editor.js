@@ -341,6 +341,8 @@ class OkemPDFEditor {
     });
     // Try to restore previous session
     this._sessionReady = this.restoreSession();
+    // Show history on upload screen
+    this.refreshHistory();
   }
 
   cacheDom() {
@@ -361,8 +363,7 @@ class OkemPDFEditor {
       "mobile-page-nav", "m-page-select", "m-btn-prev", "m-btn-next",
       "m-btn-menu", "mobile-menu", "m-btn-undo", "m-btn-redo",
       "m-btn-fit", "m-btn-new", "m-pdf-password",
-      "history-modal", "history-close", "history-list",
-      "history-clear-all", "history-cancel", "btn-history",
+      "history-section", "history-list", "history-clear-all",
     ];
     ids.forEach((id) => (this.els[id] = document.getElementById(id)));
   }
@@ -483,9 +484,6 @@ class OkemPDFEditor {
     document.addEventListener("keydown", (e) => this.onKeyDown(e), true);
 
     // ── History bindings ──
-    if (els["btn-history"]) els["btn-history"].addEventListener("click", () => this.openHistory());
-    if (els["history-close"]) els["history-close"].addEventListener("click", () => this.closeModal("history-modal"));
-    if (els["history-cancel"]) els["history-cancel"].addEventListener("click", () => this.closeModal("history-modal"));
     if (els["history-clear-all"]) els["history-clear-all"].addEventListener("click", () => this.clearHistory());
 
     // ── Mobile-specific bindings ──
@@ -500,7 +498,6 @@ class OkemPDFEditor {
     if (els["m-btn-undo"]) els["m-btn-undo"].addEventListener("click", () => { this.undo(); els["mobile-menu"].classList.add("hidden"); });
     if (els["m-btn-redo"]) els["m-btn-redo"].addEventListener("click", () => { this.redo(); els["mobile-menu"].classList.add("hidden"); });
     if (els["m-btn-fit"]) els["m-btn-fit"].addEventListener("click", () => { this.fitToWidth(); els["mobile-menu"].classList.add("hidden"); });
-    if (els["m-btn-history"]) els["m-btn-history"].addEventListener("click", () => { this.openHistory(); els["mobile-menu"].classList.add("hidden"); });
     if (els["m-btn-new"]) els["m-btn-new"].addEventListener("click", () => { this.resetEditor(); els["mobile-menu"].classList.add("hidden"); });
     // Close mobile menu on outside click
     document.addEventListener("click", (e) => {
@@ -595,6 +592,7 @@ class OkemPDFEditor {
     this.els["file-input"].value = "";
     this.els["pdf-password"].value = "";
     clearSession();
+    this.refreshHistory();
   }
 
   // ─── Rendering ──────────────────────────────────
@@ -1911,16 +1909,17 @@ class OkemPDFEditor {
   openModal(id) { this.els[id].classList.remove("hidden"); }
   closeModal(id) { this.els[id].classList.add("hidden"); }
 
-  // ─── File History ───────────────────────────────
-  async openHistory() {
+  // ─── File History (upload screen) ───────────────
+  async refreshHistory() {
+    const section = this.els["history-section"];
     const list = this.els["history-list"];
-    list.innerHTML = "<p class='history-empty'>Loading…</p>";
-    this.openModal("history-modal");
+    if (!section || !list) return;
     const items = await loadHistoryList();
     if (items.length === 0) {
-      list.innerHTML = "<p class='history-empty'>No files saved yet.</p>";
+      section.classList.add("hidden");
       return;
     }
+    section.classList.remove("hidden");
     list.innerHTML = "";
     for (const item of items) {
       const el = document.createElement("div");
@@ -1934,12 +1933,18 @@ class OkemPDFEditor {
           <div class="history-meta">${item.totalPages} pages · ${timeStr}</div>
         </div>
         <div class="history-actions">
-          <button class="history-btn load" data-id="${item.id}">Load</button>
-          <button class="history-btn delete" data-id="${item.id}">Delete</button>
+          <button class="history-btn delete" data-id="${item.id}" title="Delete">✕</button>
         </div>
       `;
-      el.querySelector(".load").addEventListener("click", () => this.loadFromHistory(item.id));
-      el.querySelector(".delete").addEventListener("click", () => this.deleteHistoryItem(item.id, el));
+      // Click the whole item to load
+      el.addEventListener("click", (e) => {
+        if (e.target.closest(".history-btn")) return; // don't trigger on delete btn
+        this.loadFromHistory(item.id);
+      });
+      el.querySelector(".delete").addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.deleteHistoryItem(item.id, el);
+      });
       list.appendChild(el);
     }
   }
@@ -1992,9 +1997,11 @@ class OkemPDFEditor {
       el.style.opacity = "0";
       el.style.transform = "translateX(20px)";
       el.style.transition = "all 0.2s";
-      setTimeout(() => el.remove(), 200);
+      setTimeout(() => {
+        el.remove();
+        this.refreshHistory(); // re-check if section should hide
+      }, 200);
     }
-    // If we deleted the current file's history entry, clear the ID
     if (this._historyId === id) this._historyId = null;
     this.toast("File removed from history.");
   }
@@ -2003,7 +2010,7 @@ class OkemPDFEditor {
     if (!confirm("Delete all saved files from history?")) return;
     await clearAllHistory();
     this._historyId = null;
-    this.els["history-list"].innerHTML = "<p class='history-empty'>No files saved yet.</p>";
+    this.els["history-section"]?.classList.add("hidden");
     this.toast("History cleared.");
   }
 

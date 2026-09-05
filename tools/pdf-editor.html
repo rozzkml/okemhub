@@ -36,15 +36,24 @@
   <div id="app">
     <!-- Upload Screen -->
     <div id="upload-screen" class="upload-screen">
-      <div class="upload-box" id="drop-zone">
-        <div class="upload-icon">📄</div>
-        <h2>Edit your PDF</h2>
-        <p class="muted">Drag &amp; drop a PDF file here, or click to select</p>
-        <label class="btn primary upload-btn">
-          Upload PDF
-          <input type="file" id="file-input" accept="application/pdf" hidden />
-        </label>
-        <p class="upload-note">Your files stay private — everything runs in your browser.</p>
+      <div class="upload-content">
+        <div class="upload-box" id="drop-zone">
+          <div class="upload-icon">📄</div>
+          <h2>Edit your PDF</h2>
+          <p class="muted">Drag &amp; drop a PDF file here, or click to select</p>
+          <label class="btn primary upload-btn">
+            Upload PDF
+            <input type="file" id="file-input" accept="application/pdf" hidden />
+          </label>
+          <p class="upload-note">Your files stay private — everything runs in your browser.</p>
+        </div>
+        <div id="history-section" class="history-section hidden">
+          <div class="history-header">
+            <h3>Recent Files</h3>
+            <button class="btn-sm" id="history-clear-all">Clear All</button>
+          </div>
+          <div id="history-list" class="history-list"></div>
+        </div>
       </div>
     </div>
 
@@ -144,9 +153,6 @@
         <button class="mobile-menu-item" id="m-btn-fit">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/></svg> Fit Width
         </button>
-        <button class="mobile-menu-item" id="m-btn-history">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg> History
-        </button>
         <button class="mobile-menu-item" id="m-btn-new">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg> New File
         </button>
@@ -194,10 +200,6 @@
           <button class="btn primary" id="btn-download">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             <span class="hide-mobile">Download PDF</span>
-          </button>
-          <button class="btn" id="btn-history" title="File History">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>
-            <span class="hide-mobile">History</span>
           </button>
           <button class="btn hide-mobile" id="btn-new-file">New File</button>
         </div>
@@ -272,23 +274,6 @@
       <div class="modal-footer">
         <button class="btn" id="note-cancel">Cancel</button>
         <button class="btn primary" id="note-apply">Add Note</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- History Modal -->
-  <div id="history-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="File History">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h3>File History</h3>
-        <button class="modal-close" id="history-close" aria-label="Close">&times;</button>
-      </div>
-      <div class="modal-body" id="history-list">
-        <p class="muted">No files saved yet.</p>
-      </div>
-      <div class="modal-footer">
-        <button class="btn" id="history-clear-all">Clear All</button>
-        <button class="btn" id="history-cancel">Close</button>
       </div>
     </div>
   </div>
