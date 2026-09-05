@@ -61,15 +61,21 @@ a { color: inherit; text-decoration: none; }
   text-transform: uppercase;
 }
 .brand-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  box-shadow: 0 2px 8px rgba(91, 140, 255, 0.25);
 }
 .brand-text {
   color: var(--muted);
+  font-weight: 800;
+  letter-spacing: 2px;
 }
 .brand-ok {
-  color: var(--accent);
+  background: linear-gradient(135deg, #7aa2ff, #5b8cff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .links {
