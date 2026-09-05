@@ -800,6 +800,84 @@ body {
 .btn-delete-ann:hover { background: #c62828; }
 .btn-delete-ann.hidden { display: none; }
 
+/* ─── History List ─── */
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 8px;
+  background: var(--surface-2);
+  transition: border-color 0.15s;
+}
+.history-item:hover {
+  border-color: var(--accent);
+}
+.history-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 1.1rem;
+}
+.history-info {
+  flex: 1;
+  min-width: 0;
+}
+.history-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.history-meta {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.history-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.history-btn {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 0.78rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.history-btn:hover {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+.history-btn.delete {
+  color: #e53935;
+  border-color: #e5393533;
+}
+.history-btn.delete:hover {
+  background: #e5393522;
+  border-color: #e53935;
+}
+.history-empty {
+  text-align: center;
+  padding: 24px;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
 /* Canvas annotation overlay */
 .canvas-ann-overlay {
   pointer-events: auto;

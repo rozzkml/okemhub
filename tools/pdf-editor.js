@@ -116,12 +116,21 @@ const LIB_FONTS = {
 // ─── Session persistence (IndexedDB) ────────────────────────────────────────
 const DB_NAME = "okemhub-pdf-editor";
 const DB_STORE = "sessions";
+const HISTORY_STORE = "history";
 const SESSION_KEY = "current";
 
 function openDB() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore(DB_STORE);
+    const req = indexedDB.open(DB_NAME, 2);
+    req.onupgradeneeded = (e) => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE);
+      if (!db.objectStoreNames.contains(HISTORY_STORE)) db.createObjectStore(HISTORY_STORE);
+      // Migrate from v1: clear old data
+      if (e.oldVersion < 2) {
+        try { db.transaction(DB_STORE, "readwrite").objectStore(DB_STORE).clear(); } catch {}
+      }
+    };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
@@ -153,6 +162,76 @@ async function clearSession() {
     const db = await openDB();
     const tx = db.transaction(DB_STORE, "readwrite");
     tx.objectStore(DB_STORE).delete(SESSION_KEY);
+  } catch (e) { /* noop */ }
+}
+
+// ─── File History (IndexedDB) ──────────────────────────────────────────────
+async function saveToHistory(id, data) {
+  try {
+    const db = await openDB();
+    const tx = db.transaction(HISTORY_STORE, "readwrite");
+    tx.objectStore(HISTORY_STORE).put(data, id);
+    await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej; });
+  } catch (e) { console.warn("History save failed:", e); }
+}
+
+async function loadHistoryList() {
+  try {
+    const db = await openDB();
+    const tx = db.transaction(HISTORY_STORE, "readonly");
+    const store = tx.objectStore(HISTORY_STORE);
+    const keysReq = store.getAllKeys();
+    return new Promise((res) => {
+      keysReq.onsuccess = async () => {
+        const keys = keysReq.result || [];
+        const items = [];
+        for (const key of keys) {
+          const req = store.get(key);
+          const data = await new Promise((r) => { req.onsuccess = () => r(req.result); req.onerror = () => r(null); });
+          if (data) {
+            items.push({
+              id: key,
+              fileName: data.fileName || "document.pdf",
+              savedAt: data.savedAt || 0,
+              totalPages: data.totalPages || 0,
+            });
+          }
+        }
+        items.sort((a, b) => b.savedAt - a.savedAt);
+        res(items);
+      };
+      keysReq.onerror = () => res([]);
+    });
+  } catch (e) { return []; }
+}
+
+async function loadFromHistory(id) {
+  try {
+    const db = await openDB();
+    const tx = db.transaction(HISTORY_STORE, "readonly");
+    const req = tx.objectStore(HISTORY_STORE).get(id);
+    return new Promise((res) => {
+      req.onsuccess = () => res(req.result || null);
+      req.onerror = () => res(null);
+    });
+  } catch (e) { return null; }
+}
+
+async function deleteFromHistory(id) {
+  try {
+    const db = await openDB();
+    const tx = db.transaction(HISTORY_STORE, "readwrite");
+    tx.objectStore(HISTORY_STORE).delete(id);
+    await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej; });
+  } catch (e) { /* noop */ }
+}
+
+async function clearAllHistory() {
+  try {
+    const db = await openDB();
+    const tx = db.transaction(HISTORY_STORE, "readwrite");
+    tx.objectStore(HISTORY_STORE).clear();
+    await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej; });
   } catch (e) { /* noop */ }
 }
 
@@ -210,6 +289,7 @@ class OkemPDFEditor {
   constructor() {
     this.pdfDoc = null;        // pdf.js document
     this.pdfBytes = null;      // original file bytes
+    this._historyId = null;    // current file's history key
     this.pdfLibDoc = null;     // pdf-lib document (built at export)
     this.pageInfos = [];       // per-page geometry + cached viewport
     this.totalPages = 0;
@@ -281,6 +361,8 @@ class OkemPDFEditor {
       "mobile-page-nav", "m-page-select", "m-btn-prev", "m-btn-next",
       "m-btn-menu", "mobile-menu", "m-btn-undo", "m-btn-redo",
       "m-btn-fit", "m-btn-new", "m-pdf-password",
+      "history-modal", "history-close", "history-list",
+      "history-clear-all", "history-cancel", "btn-history",
     ];
     ids.forEach((id) => (this.els[id] = document.getElementById(id)));
   }
@@ -400,6 +482,12 @@ class OkemPDFEditor {
 
     document.addEventListener("keydown", (e) => this.onKeyDown(e), true);
 
+    // ── History bindings ──
+    if (els["btn-history"]) els["btn-history"].addEventListener("click", () => this.openHistory());
+    if (els["history-close"]) els["history-close"].addEventListener("click", () => this.closeModal("history-modal"));
+    if (els["history-cancel"]) els["history-cancel"].addEventListener("click", () => this.closeModal("history-modal"));
+    if (els["history-clear-all"]) els["history-clear-all"].addEventListener("click", () => this.clearHistory());
+
     // ── Mobile-specific bindings ──
     if (els["m-btn-prev"]) els["m-btn-prev"].addEventListener("click", () => this.goToPage(this.currentPage - 1));
     if (els["m-btn-next"]) els["m-btn-next"].addEventListener("click", () => this.goToPage(this.currentPage + 1));
@@ -412,6 +500,7 @@ class OkemPDFEditor {
     if (els["m-btn-undo"]) els["m-btn-undo"].addEventListener("click", () => { this.undo(); els["mobile-menu"].classList.add("hidden"); });
     if (els["m-btn-redo"]) els["m-btn-redo"].addEventListener("click", () => { this.redo(); els["mobile-menu"].classList.add("hidden"); });
     if (els["m-btn-fit"]) els["m-btn-fit"].addEventListener("click", () => { this.fitToWidth(); els["mobile-menu"].classList.add("hidden"); });
+    if (els["m-btn-history"]) els["m-btn-history"].addEventListener("click", () => { this.openHistory(); els["mobile-menu"].classList.add("hidden"); });
     if (els["m-btn-new"]) els["m-btn-new"].addEventListener("click", () => { this.resetEditor(); els["mobile-menu"].classList.add("hidden"); });
     // Close mobile menu on outside click
     document.addEventListener("click", (e) => {
@@ -447,6 +536,7 @@ class OkemPDFEditor {
     try {
       this.pdfBytes = await file.arrayBuffer();
       this._fileName = file.name || "document.pdf";
+      this._historyId = "pdf_" + Date.now();
       this.pdfDoc = await pdfjsLib.getDocument({ data: this.pdfBytes.slice(0) }).promise;
       this.totalPages = this.pdfDoc.numPages;
       this.pageInfos = [];
@@ -492,6 +582,7 @@ class OkemPDFEditor {
     this.pdfDoc = null;
     this.pdfBytes = null;
     this.pdfLibDoc = null;
+    this._historyId = null;
     this.pageInfos = [];
     this.annotations = {};
     this.undoStack = [];
@@ -1466,16 +1557,22 @@ class OkemPDFEditor {
           return copy;
         });
       }
-      await saveSession({
+      const payload = {
         pdfBytes: Array.from(new Uint8Array(this.pdfBytes)),
         annotations: anns,
         currentPage: this.currentPage,
         zoom: this.zoom,
         fileName: this._fileName || "document.pdf",
+        totalPages: this.totalPages,
         undoStack: this.undoStack,
         redoStack: this.redoStack,
         savedAt: Date.now(),
-      });
+      };
+      // Save as current session
+      payload.historyId = this._historyId;
+      await saveSession(payload);
+      // Also save to history
+      await saveToHistory(this._historyId, payload);
     } catch (e) { console.warn("Auto-save failed:", e); }
   }
 
@@ -1493,6 +1590,7 @@ class OkemPDFEditor {
       this.currentPage = session.currentPage || 1;
       this.zoom = session.zoom || 1.5;
       this._fileName = session.fileName || "document.pdf";
+      this._historyId = session.historyId || null;
       this.fontCache = {};
 
       for (let i = 1; i <= this.totalPages; i++) {
@@ -1813,7 +1911,109 @@ class OkemPDFEditor {
   openModal(id) { this.els[id].classList.remove("hidden"); }
   closeModal(id) { this.els[id].classList.add("hidden"); }
 
-  // ─── History ────────────────────────────────────
+  // ─── File History ───────────────────────────────
+  async openHistory() {
+    const list = this.els["history-list"];
+    list.innerHTML = "<p class='history-empty'>Loading…</p>";
+    this.openModal("history-modal");
+    const items = await loadHistoryList();
+    if (items.length === 0) {
+      list.innerHTML = "<p class='history-empty'>No files saved yet.</p>";
+      return;
+    }
+    list.innerHTML = "";
+    for (const item of items) {
+      const el = document.createElement("div");
+      el.className = "history-item";
+      const date = new Date(item.savedAt);
+      const timeStr = date.toLocaleDateString() + " " + date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      el.innerHTML = `
+        <div class="history-icon">📄</div>
+        <div class="history-info">
+          <div class="history-name">${this._escapeHtml(item.fileName)}</div>
+          <div class="history-meta">${item.totalPages} pages · ${timeStr}</div>
+        </div>
+        <div class="history-actions">
+          <button class="history-btn load" data-id="${item.id}">Load</button>
+          <button class="history-btn delete" data-id="${item.id}">Delete</button>
+        </div>
+      `;
+      el.querySelector(".load").addEventListener("click", () => this.loadFromHistory(item.id));
+      el.querySelector(".delete").addEventListener("click", () => this.deleteHistoryItem(item.id, el));
+      list.appendChild(el);
+    }
+  }
+
+  async loadFromHistory(id) {
+    const data = await loadFromHistory(id);
+    if (!data || !data.pdfBytes) return this.toast("File not found.");
+    this.closeModal("history-modal");
+    await clearSession();
+    this._historyId = id;
+    this.pdfBytes = new Uint8Array(data.pdfBytes).buffer;
+    this._fileName = data.fileName || "document.pdf";
+    this.pdfDoc = await pdfjsLib.getDocument({ data: this.pdfBytes.slice(0) }).promise;
+    this.totalPages = this.pdfDoc.numPages;
+    this.pageInfos = [];
+    this.annotations = data.annotations || {};
+    this.undoStack = data.undoStack || [];
+    this.redoStack = data.redoStack || [];
+    this.currentPage = data.currentPage || 1;
+    this.zoom = data.zoom || 1.5;
+    this.fontCache = {};
+
+    for (let i = 1; i <= this.totalPages; i++) {
+      const page = await this.pdfDoc.getPage(i);
+      const rotation = page.rotate || 0;
+      const vp = page.getViewport({ scale: 1, rotation });
+      const mb = page.getMediaBox ? page.getMediaBox() : null;
+      const cb = page.getCropBox ? page.getCropBox() : null;
+      this.pageInfos.push({
+        width: vp.width, height: vp.height, rotation,
+        mediaBox: mb ? [mb.x, mb.y, mb.width, mb.height] : null,
+        cropBox: cb ? [cb.x, cb.y, cb.width, cb.height] : null,
+        dispW: vp.width, dispH: vp.height, viewport1: vp,
+      });
+    }
+
+    this.els["upload-screen"].classList.add("hidden");
+    this.els["editor-screen"].classList.remove("hidden");
+    this.renderThumbnails();
+    this.updateMobilePageSelect();
+    this.fitToWidth();
+    this.updateUI();
+    this.autoSave();
+    this.toast("Loaded: " + this._fileName);
+  }
+
+  async deleteHistoryItem(id, el) {
+    await deleteFromHistory(id);
+    if (el) {
+      el.style.opacity = "0";
+      el.style.transform = "translateX(20px)";
+      el.style.transition = "all 0.2s";
+      setTimeout(() => el.remove(), 200);
+    }
+    // If we deleted the current file's history entry, clear the ID
+    if (this._historyId === id) this._historyId = null;
+    this.toast("File removed from history.");
+  }
+
+  async clearHistory() {
+    if (!confirm("Delete all saved files from history?")) return;
+    await clearAllHistory();
+    this._historyId = null;
+    this.els["history-list"].innerHTML = "<p class='history-empty'>No files saved yet.</p>";
+    this.toast("History cleared.");
+  }
+
+  _escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // ─── Undo/Redo History ──────────────────────────
   pushUndo(action) {
     this.undoStack.push(action);
     this.redoStack = [];
