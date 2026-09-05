@@ -278,6 +278,9 @@ class OkemPDFEditor {
       "link-modal", "link-close", "link-url", "link-cancel", "link-apply",
       "note-modal", "note-close", "note-text", "note-cancel", "note-apply",
       "image-input", "toast",
+      "mobile-page-nav", "m-page-select", "m-btn-prev", "m-btn-next",
+      "m-btn-menu", "mobile-menu", "m-btn-undo", "m-btn-redo",
+      "m-btn-fit", "m-btn-new", "m-pdf-password",
     ];
     ids.forEach((id) => (this.els[id] = document.getElementById(id)));
   }
@@ -396,6 +399,28 @@ class OkemPDFEditor {
     });
 
     document.addEventListener("keydown", (e) => this.onKeyDown(e), true);
+
+    // ── Mobile-specific bindings ──
+    const { els } = this;
+    if (els["m-btn-prev"]) els["m-btn-prev"].addEventListener("click", () => this.goToPage(this.currentPage - 1));
+    if (els["m-btn-next"]) els["m-btn-next"].addEventListener("click", () => this.goToPage(this.currentPage + 1));
+    if (els["m-page-select"]) els["m-page-select"].addEventListener("change", (e) => this.goToPage(parseInt(e.target.value)));
+    if (els["m-btn-menu"]) {
+      els["m-btn-menu"].addEventListener("click", () => {
+        els["mobile-menu"].classList.toggle("hidden");
+      });
+    }
+    if (els["m-btn-undo"]) els["m-btn-undo"].addEventListener("click", () => { this.undo(); els["mobile-menu"].classList.add("hidden"); });
+    if (els["m-btn-redo"]) els["m-btn-redo"].addEventListener("click", () => { this.redo(); els["mobile-menu"].classList.add("hidden"); });
+    if (els["m-btn-fit"]) els["m-btn-fit"].addEventListener("click", () => { this.fitToWidth(); els["mobile-menu"].classList.add("hidden"); });
+    if (els["m-btn-new"]) els["m-btn-new"].addEventListener("click", () => { this.resetEditor(); els["mobile-menu"].classList.add("hidden"); });
+    // Close mobile menu on outside click
+    document.addEventListener("click", (e) => {
+      if (els["mobile-menu"] && !els["mobile-menu"].classList.contains("hidden") &&
+          !els["mobile-menu"].contains(e.target) && e.target !== els["m-btn-menu"] && !els["m-btn-menu"].contains(e.target)) {
+        els["mobile-menu"].classList.add("hidden");
+      }
+    });
   }
 
   // ─── Toast ──────────────────────────────────────
@@ -448,6 +473,7 @@ class OkemPDFEditor {
       this.els["upload-screen"].classList.add("hidden");
       this.els["editor-screen"].classList.remove("hidden");
       this.renderThumbnails();
+      this.updateMobilePageSelect();
       this.fitToWidth();
       this.updateUI();
       // Persist the loaded PDF immediately so a refresh won't lose it
@@ -532,6 +558,22 @@ class OkemPDFEditor {
     document.querySelectorAll(".page-thumb").forEach((t) => {
       t.classList.toggle("active", parseInt(t.dataset.page) === n);
     });
+    // Sync mobile page select
+    const mSel = this.els["m-page-select"];
+    if (mSel) mSel.value = n;
+  }
+
+  updateMobilePageSelect() {
+    const mSel = this.els["m-page-select"];
+    if (!mSel) return;
+    mSel.innerHTML = "";
+    for (let i = 1; i <= this.totalPages; i++) {
+      const opt = document.createElement("option");
+      opt.value = i;
+      opt.textContent = "Page " + i;
+      if (i === this.currentPage) opt.selected = true;
+      mSel.appendChild(opt);
+    }
   }
 
   setZoom(z) {
@@ -1467,6 +1509,7 @@ class OkemPDFEditor {
       this.els["upload-screen"].classList.add("hidden");
       this.els["editor-screen"].classList.remove("hidden");
       this.renderThumbnails();
+      this.updateMobilePageSelect();
       this.renderPage();
       this.updateUI();
       this.toast("Session restored.");
@@ -2053,7 +2096,7 @@ class OkemPDFEditor {
       }
 
       const saveOpts = {};
-      const pw = (this.els["pdf-password"].value || "").trim();
+      const pw = (this.els["pdf-password"].value || this.els["m-pdf-password"]?.value || "").trim();
       if (pw) {
         // AES-256 (V5/R6) via the pdf-lib fork's real encryption support.
         // Requires crypto.getRandomValues — present in every browser we target.
