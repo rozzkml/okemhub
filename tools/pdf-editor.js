@@ -362,8 +362,9 @@ class OkemPDFEditor {
       "image-input", "toast",
       "mobile-page-nav", "m-page-select", "m-btn-prev", "m-btn-next",
       "m-btn-menu", "mobile-menu", "m-btn-undo", "m-btn-redo",
-      "m-btn-fit", "m-btn-new", "m-pdf-password",
+      "m-btn-fit", "m-btn-new", "m-btn-save", "m-btn-cancel", "m-pdf-password",
       "history-section", "history-list", "history-clear-all",
+      "btn-save", "btn-cancel",
     ];
     ids.forEach((id) => (this.els[id] = document.getElementById(id)));
   }
@@ -423,6 +424,8 @@ class OkemPDFEditor {
 
     els["btn-download"].addEventListener("click", () => this.downloadPDF());
     els["btn-new-file"].addEventListener("click", () => this.resetEditor());
+    els["btn-save"]?.addEventListener("click", () => this.saveManual());
+    els["btn-cancel"]?.addEventListener("click", () => this.cancelEdit());
 
     els["image-input"].addEventListener("change", (e) => this.handleImageUpload(e));
 
@@ -498,6 +501,8 @@ class OkemPDFEditor {
     if (els["m-btn-undo"]) els["m-btn-undo"].addEventListener("click", () => { this.undo(); els["mobile-menu"].classList.add("hidden"); });
     if (els["m-btn-redo"]) els["m-btn-redo"].addEventListener("click", () => { this.redo(); els["mobile-menu"].classList.add("hidden"); });
     if (els["m-btn-fit"]) els["m-btn-fit"].addEventListener("click", () => { this.fitToWidth(); els["mobile-menu"].classList.add("hidden"); });
+    if (els["m-btn-save"]) els["m-btn-save"].addEventListener("click", () => { this.saveManual(); els["mobile-menu"].classList.add("hidden"); });
+    if (els["m-btn-cancel"]) els["m-btn-cancel"].addEventListener("click", () => { this.cancelEdit(); els["mobile-menu"].classList.add("hidden"); });
     if (els["m-btn-new"]) els["m-btn-new"].addEventListener("click", () => { this.resetEditor(); els["mobile-menu"].classList.add("hidden"); });
     // Close mobile menu on outside click
     document.addEventListener("click", (e) => {
@@ -1909,6 +1914,21 @@ class OkemPDFEditor {
   openModal(id) { this.els[id].classList.remove("hidden"); }
   closeModal(id) { this.els[id].classList.add("hidden"); }
 
+  // ─── Save / Cancel ─────────────────────────────
+  async saveManual() {
+    if (!this.pdfBytes) return this.toast("Nothing to save.");
+    clearTimeout(this._saveTimer);
+    await this._doSave();
+    this.toast("Saved to history.");
+  }
+
+  cancelEdit() {
+    if (this.pdfBytes && this.undoStack.length > 0) {
+      if (!confirm("Discard unsaved changes and go back?")) return;
+    }
+    this.resetEditor();
+  }
+
   // ─── File History (upload screen) ───────────────
   async refreshHistory() {
     const section = this.els["history-section"];
@@ -2077,6 +2097,7 @@ class OkemPDFEditor {
     if (e.ctrlKey || e.metaKey) {
       if (e.key === "z") { e.preventDefault(); this.undo(); }
       else if (e.key === "y" || (e.shiftKey && e.key === "z")) { e.preventDefault(); this.redo(); }
+      else if (e.key === "s") { e.preventDefault(); this.saveManual(); }
       return;
     }
 
