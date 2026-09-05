@@ -401,7 +401,6 @@ class OkemPDFEditor {
     document.addEventListener("keydown", (e) => this.onKeyDown(e), true);
 
     // ── Mobile-specific bindings ──
-    const { els } = this;
     if (els["m-btn-prev"]) els["m-btn-prev"].addEventListener("click", () => this.goToPage(this.currentPage - 1));
     if (els["m-btn-next"]) els["m-btn-next"].addEventListener("click", () => this.goToPage(this.currentPage + 1));
     if (els["m-page-select"]) els["m-page-select"].addEventListener("change", (e) => this.goToPage(parseInt(e.target.value)));
