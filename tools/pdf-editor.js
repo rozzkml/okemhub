@@ -1926,7 +1926,28 @@ class OkemPDFEditor {
     if (this.pdfBytes && this.undoStack.length > 0) {
       if (!confirm("Discard unsaved changes and go back?")) return;
     }
-    this.resetEditor();
+    try {
+      this.pdfDoc = null;
+      this.pdfBytes = null;
+      this._historyId = null;
+      this.pageInfos = [];
+      this.annotations = {};
+      this.undoStack = [];
+      this.redoStack = [];
+      this.currentPage = 1;
+      this.fontCache = {};
+      this._fileName = null;
+      this.els["editor-screen"].classList.add("hidden");
+      this.els["upload-screen"].classList.remove("hidden");
+      this.els["file-input"].value = "";
+      this.els["pdf-password"].value = "";
+      clearSession();
+      this.refreshHistory();
+    } catch (e) {
+      console.error("Cancel error:", e);
+      // Fallback: just reload the page
+      location.reload();
+    }
   }
 
   // ─── File History (upload screen) ───────────────
