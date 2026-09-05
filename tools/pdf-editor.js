@@ -245,6 +245,20 @@ class OkemPDFEditor {
     }
     this.cacheDom();
     this.bindEvents();
+    // Flush pending auto-save when the page is about to be hidden (refresh, tab close, etc.)
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden" && this.pdfBytes) {
+        // Cancel debounce and save immediately
+        clearTimeout(this._saveTimer);
+        this._doSave();
+      }
+    });
+    window.addEventListener("beforeunload", () => {
+      if (this.pdfBytes) {
+        clearTimeout(this._saveTimer);
+        this._doSave();
+      }
+    });
     // Try to restore previous session
     this.restoreSession();
   }
@@ -436,6 +450,8 @@ class OkemPDFEditor {
       this.renderThumbnails();
       this.fitToWidth();
       this.updateUI();
+      // Persist the loaded PDF immediately so a refresh won't lose it
+      this.autoSave();
       this.toast("PDF loaded.");
     } catch (err) {
       console.error(err);
@@ -1191,8 +1207,8 @@ class OkemPDFEditor {
     el.title = ann.url;
     el.dataset.annId = ann.id;
     el.addEventListener("click", (e) => {
+      e.stopPropagation();
       if (this.tool === "select") {
-        e.stopPropagation();
         this.selectAnnotation(ann, el);
       } else {
         window.open(ann.url, "_blank");
@@ -1411,6 +1427,8 @@ class OkemPDFEditor {
         currentPage: this.currentPage,
         zoom: this.zoom,
         fileName: this._fileName || "document.pdf",
+        undoStack: this.undoStack,
+        redoStack: this.redoStack,
         savedAt: Date.now(),
       });
     } catch (e) { console.warn("Auto-save failed:", e); }
@@ -1425,8 +1443,8 @@ class OkemPDFEditor {
       this.totalPages = this.pdfDoc.numPages;
       this.pageInfos = [];
       this.annotations = session.annotations || {};
-      this.undoStack = [];
-      this.redoStack = [];
+      this.undoStack = session.undoStack || [];
+      this.redoStack = session.redoStack || [];
       this.currentPage = session.currentPage || 1;
       this.zoom = session.zoom || 1.5;
       this._fileName = session.fileName || "document.pdf";
@@ -1436,8 +1454,12 @@ class OkemPDFEditor {
         const page = await this.pdfDoc.getPage(i);
         const rotation = page.rotate || 0;
         const vp = page.getViewport({ scale: 1, rotation });
+        const mb = page.getMediaBox ? page.getMediaBox() : null;
+        const cb = page.getCropBox ? page.getCropBox() : null;
         this.pageInfos.push({
           width: vp.width, height: vp.height, rotation,
+          mediaBox: mb ? [mb.x, mb.y, mb.width, mb.height] : null,
+          cropBox: cb ? [cb.x, cb.y, cb.width, cb.height] : null,
           dispW: vp.width, dispH: vp.height, viewport1: vp,
         });
       }
@@ -1504,8 +1526,8 @@ class OkemPDFEditor {
       const spacing = ann.letterSpacing || 0;
       const approxW = (ann.text || "").length * charW + Math.max(0, (ann.text || "").length - 1) * spacing;
       const approxH = ann.fontSize * 1.4;
-      return pos.x >= ann.x && pos.x <= ann.x + approxW / this.zoom &&
-             pos.y >= ann.y - approxH / this.zoom && pos.y <= ann.y;
+      return pos.x >= ann.x && pos.x <= ann.x + approxW &&
+             pos.y >= ann.y - approxH && pos.y <= ann.y;
     }
     if (ann.type === "draw") {
       return ann.points.some((p) => Math.abs(p.x - pos.x) < 10 && Math.abs(p.y - pos.y) < 10);
@@ -1525,6 +1547,10 @@ class OkemPDFEditor {
     const origY = ann.y || 0;
     const origPoints = ann.points ? ann.points.map((p) => ({ ...p })) : null;
 
+    const origStartX = ann.startX;
+    const origStartY = ann.startY;
+    const origEndX = ann.endX;
+    const origEndY = ann.endY;
     const onMove = (ev) => {
       const dx = (ev.clientX - startX) / this.zoom;
       const dy = (ev.clientY - startY) / this.zoom;
@@ -1533,11 +1559,11 @@ class OkemPDFEditor {
       if (origPoints) {
         ann.points = origPoints.map((p) => ({ x: p.x + dx, y: p.y + dy }));
       }
-      if (ann.startX !== undefined) {
-        ann.startX = origX + dx;
-        ann.startY = origY + dy;
-        ann.endX = ann.startX + (ann.endX - origX);
-        ann.endY = ann.startY + (ann.endY - origY);
+      if (origStartX !== undefined) {
+        ann.startX = origStartX + dx;
+        ann.startY = origStartY + dy;
+        ann.endX = origEndX + dx;
+        ann.endY = origEndY + dy;
       }
       this.renderAnnotations();
     };
@@ -1569,7 +1595,7 @@ class OkemPDFEditor {
     input.style.color = opts.color || "#000";
     input.style.fontWeight = opts.fontWeight || 400;
     input.style.fontStyle = opts.italic ? "italic" : "normal";
-    input.style.letterSpacing = (opts.letterSpacing || 0) + "px";
+    input.style.letterSpacing = ((opts.letterSpacing || 0) * z) + "px";
     input.style.width = Math.max(fs * 8, 120) + "px";
     input.style.height = Math.ceil(fs * 1.2) + "px";
     input.style.padding = "0";
@@ -1800,6 +1826,9 @@ class OkemPDFEditor {
       else if (e.key === "y" || (e.shiftKey && e.key === "z")) { e.preventDefault(); this.redo(); }
       return;
     }
+
+    // Don't trigger tool shortcuts when modifier keys are held (Ctrl+S, etc.)
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
 
     const toolKeys = {
       v: "select", t: "text", i: "image", d: "draw",
@@ -2046,7 +2075,7 @@ class OkemPDFEditor {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "edited-document.pdf";
+      a.download = this._fileName ? this._fileName.replace(/\.pdf$/i, "-edited.pdf") : "edited-document.pdf";
       a.click();
       URL.revokeObjectURL(url);
       this.toast("PDF downloaded.");
