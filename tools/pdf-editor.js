@@ -260,7 +260,7 @@ class OkemPDFEditor {
       }
     });
     // Try to restore previous session
-    this.restoreSession();
+    this._sessionReady = this.restoreSession();
   }
 
   cacheDom() {
@@ -439,6 +439,10 @@ class OkemPDFEditor {
       this.toast("Please select a PDF file.");
       return;
     }
+    // Wait for any pending session restore to finish first
+    if (this._sessionReady) await this._sessionReady;
+    // Clear old session before loading new file
+    await clearSession();
     this.toast("Loading PDF…", 9999);
     try {
       this.pdfBytes = await file.arrayBuffer();
