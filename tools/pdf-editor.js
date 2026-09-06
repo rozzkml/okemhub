@@ -2004,7 +2004,6 @@ class OkemPDFEditor {
       if (!data || !data.pdfBytes) return this.toast("File not found.");
       if (!window.pdfjsLib) return this.toast("PDF library not loaded. Please refresh.");
       console.log("[loadFromHistory] pdfjsLib available, loading PDF...");
-      this.closeModal("history-modal");
       // Wait for any pending session restore to finish first
       if (this._sessionReady) await this._sessionReady;
       await clearSession();
