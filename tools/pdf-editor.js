@@ -1994,6 +1994,8 @@ class OkemPDFEditor {
     const data = await loadFromHistory(id);
     if (!data || !data.pdfBytes) return this.toast("File not found.");
     this.closeModal("history-modal");
+    // Wait for any pending session restore to finish first
+    if (this._sessionReady) await this._sessionReady;
     await clearSession();
     this._historyId = id;
     this.pdfBytes = new Uint8Array(data.pdfBytes).buffer;
