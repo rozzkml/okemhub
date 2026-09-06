@@ -1919,7 +1919,9 @@ class OkemPDFEditor {
   // ─── Save / Cancel ─────────────────────────────
   async saveManual() {
     if (!this.pdfBytes) return this.toast("Nothing to save.");
-    await this.downloadPDF();
+    clearTimeout(this._saveTimer);
+    await this._doSave();
+    this.toast("Changes saved.");
   }
 
   cancelEdit() {
