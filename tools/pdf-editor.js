@@ -2206,8 +2206,14 @@ class OkemPDFEditor {
                 const font = await this.getFont(pdfDoc, ann);
                 const size = ann.fontSize || 12;
                 const spacing = ann.letterSpacing || 0;
-                // Use actual font ascender height for accurate baseline position
-                const ascenderH = font.heightAtSize(size, { descender: false });
+                // Measure actual text ascent using canvas to match editor rendering
+                const measureCanvas = document.createElement("canvas");
+                const measureCtx = measureCanvas.getContext("2d");
+                const cssWeight = ann.fontWeight || 400;
+                const cssStyle = ann.italic ? "italic" : "normal";
+                measureCtx.font = `${cssStyle} ${cssWeight} ${size}px ${this._cssFont(ann)}`;
+                const metrics = measureCtx.measureText(ann.text || "x");
+                const ascenderH = metrics.actualBoundingBoxAscent || size * 0.8;
                 // Map click position (top of text) to PDF baseline position
                 const p = this.toPageSpace(ann.x, ann.y + ascenderH, pageNum);
                 const color = PDFLib.rgb(...this.hexToRgb(ann.color || "#000000"));
