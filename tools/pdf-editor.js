@@ -789,8 +789,8 @@ class OkemPDFEditor {
             <option value="firacode">Fira Code</option>
           </optgroup>
         </select>`)}
-        ${sec("Size", `<input type="number" id="opt-size-num" min="1" max="200" value="16" class="opt-size-num" />
-          <input type="range" id="opt-size" min="1" max="200" value="16" />`)}
+        ${sec("Size", `<input type="number" id="opt-size-num" min="1" max="200" value="12" class="opt-size-num" />
+          <input type="range" id="opt-size" min="1" max="200" value="12" />`)}
         ${sec("Weight", `<input type="range" id="opt-weight" min="100" max="900" step="100" value="400" />
           <span class="opt-val" id="opt-weight-val">400</span>`)}
         ${sec("Color", `<input type="color" id="opt-color" value="#000000" />`)}
@@ -1735,7 +1735,7 @@ class OkemPDFEditor {
 
     const input = document.createElement("textarea");
     input.className = "canvas-text-input";
-    const fs = (opts.fontSize || 16) * z;
+    const fs = (opts.fontSize || 12) * z;
     input.style.left = pos.x * z + "px";
     input.style.top = pos.y * z + "px";
     input.style.fontSize = fs + "px";
@@ -1765,7 +1765,7 @@ class OkemPDFEditor {
         this.addAnnotation({
           type: "text", page: this.currentPage,
           x: pos.x, y: pos.y,
-          text, fontSize: opts.fontSize || 16,
+          text, fontSize: opts.fontSize || 12,
           font: opts.font || "sans",
           color: opts.color || "#000",
           fontWeight: opts.fontWeight || 400,
@@ -2206,15 +2206,17 @@ class OkemPDFEditor {
             switch (ann.type) {
               case "text": {
                 const font = await this.getFont(pdfDoc, ann);
-                const size = ann.fontSize || 16;
+                const size = ann.fontSize || 12;
                 const spacing = ann.letterSpacing || 0;
                 // CSS .annotation-text has padding: 2px 4px — the visible text
                 // is offset 4px right and 2px down from (ann.x, ann.y).
                 // Account for this padding so PDF text matches the editor.
                 const PAD_X = 4, PAD_Y = 2;
+                // Use actual font ascender height for accurate baseline position
+                const ascenderH = font.heightAtSize(size, { descender: false });
                 // ann.y + PAD_Y is the top of the text in display space;
-                // shift down to baseline, then map to page space.
-                const p = this.toPageSpace(ann.x + PAD_X, ann.y + PAD_Y + size * 0.8, pageNum);
+                // shift down by ascender height to reach the baseline, then map.
+                const p = this.toPageSpace(ann.x + PAD_X, ann.y + PAD_Y + ascenderH, pageNum);
                 const color = PDFLib.rgb(...this.hexToRgb(ann.color || "#000000"));
                 if (spacing !== 0 && (ann.text || "").length > 1) {
                   // Draw char-by-char with letter-spacing
