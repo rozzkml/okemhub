@@ -1991,47 +1991,59 @@ class OkemPDFEditor {
   }
 
   async loadFromHistory(id) {
-    const data = await loadFromHistory(id);
-    if (!data || !data.pdfBytes) return this.toast("File not found.");
-    this.closeModal("history-modal");
-    // Wait for any pending session restore to finish first
-    if (this._sessionReady) await this._sessionReady;
-    await clearSession();
-    this._historyId = id;
-    this.pdfBytes = new Uint8Array(data.pdfBytes).buffer;
-    this._fileName = data.fileName || "document.pdf";
-    this.pdfDoc = await pdfjsLib.getDocument({ data: this.pdfBytes.slice(0) }).promise;
-    this.totalPages = this.pdfDoc.numPages;
-    this.pageInfos = [];
-    this.annotations = data.annotations || {};
-    this.undoStack = data.undoStack || [];
-    this.redoStack = data.redoStack || [];
-    this.currentPage = data.currentPage || 1;
-    this.zoom = data.zoom || 1.5;
-    this.fontCache = {};
+    try {
+      console.log("[loadFromHistory] Loading id:", id);
+      const data = await loadFromHistory(id);
+      console.log("[loadFromHistory] Data loaded:", data ? "yes" : "no", data ? "pdfBytes length: " + (data.pdfBytes ? data.pdfBytes.length : "MISSING") : "");
+      if (!data || !data.pdfBytes) return this.toast("File not found.");
+      if (!window.pdfjsLib) return this.toast("PDF library not loaded. Please refresh.");
+      console.log("[loadFromHistory] pdfjsLib available, loading PDF...");
+      this.closeModal("history-modal");
+      // Wait for any pending session restore to finish first
+      if (this._sessionReady) await this._sessionReady;
+      await clearSession();
+      this._historyId = id;
+      this.pdfBytes = new Uint8Array(data.pdfBytes).buffer;
+      this._fileName = data.fileName || "document.pdf";
+      console.log("[loadFromHistory] pdfBytes size:", this.pdfBytes.byteLength);
+      this.pdfDoc = await pdfjsLib.getDocument({ data: this.pdfBytes.slice(0) }).promise;
+      this.totalPages = this.pdfDoc.numPages;
+      console.log("[loadFromHistory] PDF loaded, pages:", this.totalPages);
+      this.pageInfos = [];
+      this.annotations = data.annotations || {};
+      this.undoStack = data.undoStack || [];
+      this.redoStack = data.redoStack || [];
+      this.currentPage = data.currentPage || 1;
+      this.zoom = data.zoom || 1.5;
+      this.fontCache = {};
 
-    for (let i = 1; i <= this.totalPages; i++) {
-      const page = await this.pdfDoc.getPage(i);
-      const rotation = page.rotate || 0;
-      const vp = page.getViewport({ scale: 1, rotation });
-      const mb = page.getMediaBox ? page.getMediaBox() : null;
-      const cb = page.getCropBox ? page.getCropBox() : null;
-      this.pageInfos.push({
-        width: vp.width, height: vp.height, rotation,
-        mediaBox: mb ? [mb.x, mb.y, mb.width, mb.height] : null,
-        cropBox: cb ? [cb.x, cb.y, cb.width, cb.height] : null,
-        dispW: vp.width, dispH: vp.height, viewport1: vp,
-      });
+      for (let i = 1; i <= this.totalPages; i++) {
+        const page = await this.pdfDoc.getPage(i);
+        const rotation = page.rotate || 0;
+        const vp = page.getViewport({ scale: 1, rotation });
+        const mb = page.getMediaBox ? page.getMediaBox() : null;
+        const cb = page.getCropBox ? page.getCropBox() : null;
+        this.pageInfos.push({
+          width: vp.width, height: vp.height, rotation,
+          mediaBox: mb ? [mb.x, mb.y, mb.width, mb.height] : null,
+          cropBox: cb ? [cb.x, cb.y, cb.width, cb.height] : null,
+          dispW: vp.width, dispH: vp.height, viewport1: vp,
+        });
+      }
+
+      this.els["upload-screen"].classList.add("hidden");
+      this.els["editor-screen"].classList.remove("hidden");
+      this.renderThumbnails();
+      this.updateMobilePageSelect();
+      this.fitToWidth();
+      this.updateUI();
+      this.autoSave();
+      this.toast("Loaded: " + this._fileName);
+      console.log("[loadFromHistory] Done!");
+    } catch (err) {
+      console.error("[loadFromHistory] ERROR:", err);
+      this.toast("Failed to load file: " + (err.message || err));
     }
-
-    this.els["upload-screen"].classList.add("hidden");
-    this.els["editor-screen"].classList.remove("hidden");
-    this.renderThumbnails();
-    this.updateMobilePageSelect();
-    this.fitToWidth();
-    this.updateUI();
-    this.autoSave();
-    this.toast("Loaded: " + this._fileName);
   }
 
   async deleteHistoryItem(id, el) {
