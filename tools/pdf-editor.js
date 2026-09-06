@@ -1673,8 +1673,10 @@ class OkemPDFEditor {
       const spacing = ann.letterSpacing || 0;
       const approxW = (ann.text || "").length * charW + Math.max(0, (ann.text || "").length - 1) * spacing;
       const approxH = ann.fontSize * 1.4;
+      // CSS .annotation-text has padding: 2px 4px — text starts at ann.y and
+      // extends downward. Check the correct bounding box.
       return pos.x >= ann.x && pos.x <= ann.x + approxW &&
-             pos.y >= ann.y - approxH && pos.y <= ann.y;
+             pos.y >= ann.y && pos.y <= ann.y + approxH;
     }
     if (ann.type === "draw") {
       return ann.points.some((p) => Math.abs(p.x - pos.x) < 10 && Math.abs(p.y - pos.y) < 10);
@@ -2207,9 +2209,13 @@ class OkemPDFEditor {
                 const font = await this.getFont(pdfDoc, ann);
                 const size = ann.fontSize || 16;
                 const spacing = ann.letterSpacing || 0;
-                // ann.y is the top of the display box; shift down to baseline
-                // in display space, then map.
-                const p = this.toPageSpace(ann.x, ann.y + size * 0.8, pageNum);
+                // CSS .annotation-text has padding: 2px 4px — the visible text
+                // is offset 4px right and 2px down from (ann.x, ann.y).
+                // Account for this padding so PDF text matches the editor.
+                const PAD_X = 4, PAD_Y = 2;
+                // ann.y + PAD_Y is the top of the text in display space;
+                // shift down to baseline, then map to page space.
+                const p = this.toPageSpace(ann.x + PAD_X, ann.y + PAD_Y + size * 0.8, pageNum);
                 const color = PDFLib.rgb(...this.hexToRgb(ann.color || "#000000"));
                 if (spacing !== 0 && (ann.text || "").length > 1) {
                   // Draw char-by-char with letter-spacing
