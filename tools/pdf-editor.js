@@ -423,7 +423,7 @@ class OkemPDFEditor {
     els["btn-redo"].addEventListener("click", () => this.redo());
 
     els["btn-download"].addEventListener("click", () => this.downloadPDF());
-    els["btn-new-file"].addEventListener("click", () => this.resetEditor());
+    els["btn-new-file"]?.addEventListener("click", () => this.resetEditor());
     els["btn-save"]?.addEventListener("click", () => this.saveManual());
     els["btn-cancel"]?.addEventListener("click", () => this.cancelEdit());
 
