@@ -381,7 +381,7 @@ body {
   border: none;
   color: inherit;
   font: inherit;
-  padding: 2px 4px;
+  padding: 0;
   min-width: 20px;
   min-height: 1em;
   outline: none;

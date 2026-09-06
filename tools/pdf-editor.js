@@ -1919,9 +1919,7 @@ class OkemPDFEditor {
   // ─── Save / Cancel ─────────────────────────────
   async saveManual() {
     if (!this.pdfBytes) return this.toast("Nothing to save.");
-    clearTimeout(this._saveTimer);
-    await this._doSave();
-    this.toast("Saved to history.");
+    await this.downloadPDF();
   }
 
   cancelEdit() {
@@ -2208,15 +2206,10 @@ class OkemPDFEditor {
                 const font = await this.getFont(pdfDoc, ann);
                 const size = ann.fontSize || 12;
                 const spacing = ann.letterSpacing || 0;
-                // CSS .annotation-text has padding: 2px 4px — the visible text
-                // is offset 4px right and 2px down from (ann.x, ann.y).
-                // Account for this padding so PDF text matches the editor.
-                const PAD_X = 4, PAD_Y = 2;
                 // Use actual font ascender height for accurate baseline position
                 const ascenderH = font.heightAtSize(size, { descender: false });
-                // ann.y + PAD_Y is the top of the text in display space;
-                // shift down by ascender height to reach the baseline, then map.
-                const p = this.toPageSpace(ann.x + PAD_X, ann.y + PAD_Y + ascenderH, pageNum);
+                // Map click position (top of text) to PDF baseline position
+                const p = this.toPageSpace(ann.x, ann.y + ascenderH, pageNum);
                 const color = PDFLib.rgb(...this.hexToRgb(ann.color || "#000000"));
                 if (spacing !== 0 && (ann.text || "").length > 1) {
                   // Draw char-by-char with letter-spacing
