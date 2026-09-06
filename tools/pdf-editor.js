@@ -1954,8 +1954,9 @@ class OkemPDFEditor {
   async refreshHistory() {
     const section = this.els["history-section"];
     const list = this.els["history-list"];
-    if (!section || !list) return;
+    if (!section || !list) { console.warn("[refreshHistory] section or list not found"); return; }
     const items = await loadHistoryList();
+    console.log("[refreshHistory] items:", items.length);
     if (items.length === 0) {
       section.classList.add("hidden");
       return;
@@ -1979,6 +1980,7 @@ class OkemPDFEditor {
       `;
       // Click the whole item to load
       el.addEventListener("click", (e) => {
+        console.log("[refreshHistory] CLICK on item:", item.id, "target:", e.target.tagName, e.target.className);
         if (e.target.closest(".history-btn")) return; // don't trigger on delete btn
         this.loadFromHistory(item.id);
       });
@@ -1987,7 +1989,9 @@ class OkemPDFEditor {
         this.deleteHistoryItem(item.id, el);
       });
       list.appendChild(el);
+      console.log("[refreshHistory] Attached handler for:", item.id, item.fileName);
     }
+    console.log("[refreshHistory] Done,", items.length, "items rendered");
   }
 
   async loadFromHistory(id) {
