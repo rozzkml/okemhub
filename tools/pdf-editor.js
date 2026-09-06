@@ -2210,8 +2210,8 @@ class OkemPDFEditor {
                 const spacing = ann.letterSpacing || 0;
                 // Baseline offset: ratio of font ascent to em size.
                 // Liberation Sans ascent is ~1854/2048 = 0.905 of em.
-                // Using 0.9 gives a close match for most sans-serif fonts.
-                const ascenderH = size * 0.9;
+                // Using 0.95 to account for rendering differences.
+                const ascenderH = size * 0.95;
                 const p = this.toPageSpace(ann.x, ann.y + ascenderH, pageNum);
                 const color = PDFLib.rgb(...this.hexToRgb(ann.color || "#000000"));
                 if (spacing !== 0 && (ann.text || "").length > 1) {
