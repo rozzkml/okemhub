@@ -1739,42 +1739,59 @@ class OkemPDFEditor {
 
     const input = document.createElement("textarea");
     input.className = "canvas-text-input";
-    const fs = (opts.fontSize || 12) * z;
+    const applyStyle = (o) => {
+      const s = (o.fontSize || 12) * z;
+      input.style.fontSize = s + "px";
+      input.style.fontFamily = this._cssFont(o);
+      input.style.color = o.color || "#000";
+      input.style.fontWeight = o.fontWeight || 400;
+      input.style.fontStyle = o.italic ? "italic" : "normal";
+      input.style.letterSpacing = ((o.letterSpacing || 0) * z) + "px";
+      input.style.width = Math.max(s * 8, 120) + "px";
+      input.style.height = Math.ceil(s * 1.2) + "px";
+    };
     input.style.left = pos.x * z + "px";
     input.style.top = pos.y * z + "px";
-    input.style.fontSize = fs + "px";
     input.style.lineHeight = "1.2";
-    input.style.fontFamily = this._cssFont(opts);
-    input.style.color = opts.color || "#000";
-    input.style.fontWeight = opts.fontWeight || 400;
-    input.style.fontStyle = opts.italic ? "italic" : "normal";
-    input.style.letterSpacing = ((opts.letterSpacing || 0) * z) + "px";
-    input.style.width = Math.max(fs * 8, 120) + "px";
-    input.style.height = Math.ceil(fs * 1.2) + "px";
     input.style.padding = "0";
     input.style.margin = "0";
+    applyStyle(opts);
 
     wrapper.appendChild(input);
+
+    // Live-update style when user changes toolbar options while typing
+    const toolOpts = this.els["tool-options"];
+    const onOptChange = () => applyStyle(this.getToolOptions());
+    toolOpts.addEventListener("input", onOptChange);
+    toolOpts.addEventListener("change", onOptChange);
 
     requestAnimationFrame(() => {
       input.focus();
       this.textInputActive = true;
     });
 
+    const cleanup = () => {
+      toolOpts.removeEventListener("input", onOptChange);
+      toolOpts.removeEventListener("change", onOptChange);
+    };
+
     const commit = () => {
       if (!this.textInputActive) return;
       this.textInputActive = false;
+      cleanup();
       const text = input.value.trim();
       if (text) {
+        // Read current options at commit time (user may have changed them while typing)
+        const current = this.getToolOptions();
         this.addAnnotation({
           type: "text", page: this.currentPage,
           x: pos.x, y: pos.y,
-          text, fontSize: opts.fontSize || 12,
-          font: opts.font || "sans",
-          color: opts.color || "#000",
-          fontWeight: opts.fontWeight || 400,
-          italic: opts.italic || false,
-          letterSpacing: opts.letterSpacing || 0,
+          text, fontSize: current.fontSize || 12,
+          font: current.font || "sans",
+          color: current.color || "#000",
+          fontWeight: current.fontWeight || 400,
+          italic: current.italic || false,
+          letterSpacing: current.letterSpacing || 0,
         });
         this.renderAnnotations();
       }
@@ -1789,6 +1806,7 @@ class OkemPDFEditor {
       if (e.key === "Escape") {
         committed = true;
         this.textInputActive = false;
+        cleanup();
         input.remove();
       } else if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
