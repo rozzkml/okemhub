@@ -1204,12 +1204,17 @@ class OkemPDFEditor {
     el.style.letterSpacing = ((ann.letterSpacing || 0) * z) + "px";
     el.dataset.annId = ann.id;
 
+    let _origText = ann.text;
+    el.addEventListener("focus", () => { _origText = el.textContent; });
     el.addEventListener("blur", () => {
       ann.text = el.textContent;
       if (!ann.text.trim()) {
         this.removeAnnotation(ann);
         this.renderAnnotations();
       } else {
+        if (ann.text !== _origText) {
+          this.pushUndo({ type: "edit", annotation: ann, page: this.currentPage, oldText: _origText, newText: ann.text });
+        }
         this.autoSave();
       }
     });
@@ -1669,12 +1674,11 @@ class OkemPDFEditor {
 
   hitTest(ann, pos) {
     if (ann.type === "text") {
-      const charW = ann.fontSize * 0.6;
-      const spacing = ann.letterSpacing || 0;
-      const approxW = (ann.text || "").length * charW + Math.max(0, (ann.text || "").length - 1) * spacing;
+      // Use canvas measureText for accurate width instead of rough charW approximation
+      const ctx = this.els["overlay-canvas"].getContext("2d");
+      ctx.font = `${ann.italic ? "italic " : ""}${ann.fontWeight || 400} ${ann.fontSize}px ${this._cssFont(ann)}`;
+      const approxW = ctx.measureText(ann.text || "").width;
       const approxH = ann.fontSize * 1.4;
-      // CSS .annotation-text has padding: 2px 4px — text starts at ann.y and
-      // extends downward. Check the correct bounding box.
       return pos.x >= ann.x && pos.x <= ann.x + approxW &&
              pos.y >= ann.y && pos.y <= ann.y + approxH;
     }
@@ -2096,6 +2100,8 @@ class OkemPDFEditor {
     } else if (action.type === "remove") {
       if (!this.annotations[action.page]) this.annotations[action.page] = [];
       this.annotations[action.page].push(action.annotation);
+    } else if (action.type === "edit") {
+      action.annotation.text = action.oldText;
     }
     this.redoStack.push(action);
     this.renderAnnotations();
@@ -2112,6 +2118,8 @@ class OkemPDFEditor {
     } else if (action.type === "remove") {
       const pageAnns = this.annotations[action.page];
       if (pageAnns) { const idx = pageAnns.indexOf(action.annotation); if (idx !== -1) pageAnns.splice(idx, 1); }
+    } else if (action.type === "edit") {
+      action.annotation.text = action.newText;
     }
     this.undoStack.push(action);
     this.renderAnnotations();
@@ -2135,9 +2143,11 @@ class OkemPDFEditor {
     if (this.textInputActive) return;
 
     if (e.ctrlKey || e.metaKey) {
-      if (e.key === "z") { e.preventDefault(); this.undo(); }
-      else if (e.key === "y" || (e.shiftKey && e.key === "z")) { e.preventDefault(); this.redo(); }
-      else if (e.key === "s") { e.preventDefault(); this.saveManual(); }
+      const k = e.key;
+      if ((k === "z" || k === "Z") && e.shiftKey) { e.preventDefault(); this.redo(); }
+      else if (k === "z" || k === "Z") { e.preventDefault(); this.undo(); }
+      else if (k === "y" || k === "Y") { e.preventDefault(); this.redo(); }
+      else if (k === "s" || k === "S") { e.preventDefault(); this.saveManual(); }
       return;
     }
 
@@ -2286,8 +2296,7 @@ class OkemPDFEditor {
                 page.drawRectangle({
                   ...this.placeBox(pageNum, ann.x, ann.y, ann.w, ann.h),
                   color: PDFLib.rgb(...this.hexToRgb(ann.color || "#ffeb3b")),
-                  opacity: 0.35,
-                  blendMode: PDFLib.BlendMode.Multiply,
+                  opacity: 0.33,
                 });
                 break;
               }
@@ -2377,9 +2386,15 @@ class OkemPDFEditor {
                   borderWidth: 1, opacity: 0.5,
                 });
                 const font = await this.getFont(pdfDoc, { bold: false, italic: false });
-                const label = this.toPageSpace(ann.x + 4, ann.y + 14, pageNum);
-                page.drawText(ann.url.substring(0, 30), {
-                  x: label.x, y: label.y, size: 10, font, rotate: rot,
+                const linkSize = 9; // ~0.72rem at 96dpi
+                const linkText = ann.url.substring(0, 30);
+                const linkW = font.widthOfTextAtSize(linkText, linkSize);
+                // Center text in box (matches CSS flexbox centering)
+                const lx = ann.x + (w - linkW) / 2;
+                const ly = ann.y + h / 2 + linkSize * 0.35;
+                const label = this.toPageSpace(lx, ly, pageNum);
+                page.drawText(linkText, {
+                  x: label.x, y: label.y, size: linkSize, font, rotate: rot,
                   color: PDFLib.rgb(...this.hexToRgb("#5b8cff")),
                 });
                 const url = /^https?:\/\//i.test(ann.url) ? ann.url : "https://" + ann.url;
@@ -2404,7 +2419,11 @@ class OkemPDFEditor {
                   borderWidth: 1,
                 });
                 const font = await this.getFont(pdfDoc, { bold: false, italic: false });
-                const label = this.toPageSpace(ann.x + 6, ann.y + 16, pageNum);
+                const noteSize = 10; // ~0.82rem at 96dpi
+                // CSS padding: 8px — text starts 8px from box edge
+                const nx = ann.x + 8;
+                const ny = ann.y + 8 + noteSize * 0.9; // padding + ascent
+                const label = this.toPageSpace(nx, ny, pageNum);
                 page.drawText((ann.text || "").substring(0, 50), {
                   x: label.x, y: label.y, size: 10, font, rotate: rot,
                   color: PDFLib.rgb(0.2, 0.2, 0.2),
