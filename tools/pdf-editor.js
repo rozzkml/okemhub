@@ -2182,6 +2182,28 @@ class OkemPDFEditor {
     return font;
   }
 
+  // Get font ascent ratio (ascent / unitsPerEm) from the actual TTF file.
+  // Uses raw fontkit to parse the font and extract OS/2 metrics.
+  async _getFontAscentRatio(family, ann) {
+    const weight = ann.fontWeight || (ann.bold ? 700 : 400);
+    const isBold = weight >= 600;
+    const styleKey = ann.italic ? (isBold ? "boldItalic" : "italic") : (isBold ? "bold" : "regular");
+    const cacheKey = family + ":" + styleKey;
+    if (!this._ascentCache) this._ascentCache = {};
+    if (this._ascentCache[cacheKey] !== undefined) return this._ascentCache[cacheKey];
+    try {
+      const path = LIB_FONTS[family]?.[styleKey] || LIB_FONTS.sans.regular;
+      const data = await fetch(path).then(r => r.arrayBuffer());
+      const fkFont = fontkit.create(new Uint8Array(data));
+      const ratio = fkFont.ascent / fkFont.unitsPerEm;
+      this._ascentCache[cacheKey] = ratio;
+      return ratio;
+    } catch (e) {
+      console.warn("Font metrics unavailable:", cacheKey, e);
+      return 0.9; // safe fallback
+    }
+  }
+
   // ─── Download PDF ───────────────────────────────
   async downloadPDF() {
     const btn = this.els["btn-download"];
@@ -2208,11 +2230,13 @@ class OkemPDFEditor {
                 const font = await this.getFont(pdfDoc, ann);
                 const size = ann.fontSize || 12;
                 const spacing = ann.letterSpacing || 0;
-                // Baseline offset: ratio of font ascent to em size.
-                // Liberation Sans ascent is ~1854/2048 = 0.905 of em.
-                // Using 0.95 to account for rendering differences.
-                const ascenderH = size * 1;
-                const p = this.toPageSpace(ann.x, ann.y + ascenderH, pageNum);
+                // Baseline offset: distance from CSS element top to text baseline.
+                // In CSS, with line-height > 1, text is vertically centered in the
+                // line box, so the baseline sits at half-leading + font ascent.
+                const _ascent = await this._getFontAscentRatio(ann.font || "sans", ann);
+                const _lh = 1.2; // must match .annotation-text line-height
+                const baselineOffset = ((_lh - 1) / 2 + _ascent) * size;
+                const p = this.toPageSpace(ann.x, ann.y + baselineOffset, pageNum);
                 const color = PDFLib.rgb(...this.hexToRgb(ann.color || "#000000"));
                 if (spacing !== 0 && (ann.text || "").length > 1) {
                   // Draw char-by-char with letter-spacing
