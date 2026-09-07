@@ -2182,8 +2182,34 @@ class OkemPDFEditor {
     return font;
   }
 
-  // Get font ascent ratio (ascent / unitsPerEm) from the actual TTF file.
-  // Uses raw fontkit to parse the font and extract OS/2 metrics.
+  // Parse TTF/OTF font binary to extract the ascent ratio that CSS actually uses.
+  // CSS line-box model uses usWinAscent when USE_TYPO_METRICS is NOT set,
+  // and sTypoAscender when it IS set. fontkit's `ascent` returns hhea.ascent
+  // which can differ (e.g. Roboto: hhea=1900 vs usWin=2146 — a 12% gap!).
+  _parseFontAscentRatio(buf) {
+    const v = new DataView(buf);
+    const numTables = v.getUint16(4);
+    let os2Off = 0, headOff = 0;
+    for (let i = 0; i < numTables; i++) {
+      const off = 12 + i * 16;
+      const tag = String.fromCharCode(
+        v.getUint8(off), v.getUint8(off + 1),
+        v.getUint8(off + 2), v.getUint8(off + 3)
+      );
+      const tOff = v.getUint32(off + 8);
+      if (tag === 'OS/2') os2Off = tOff;
+      else if (tag === 'head') headOff = tOff;
+    }
+    if (!os2Off || !headOff) return null;
+    const upm = v.getUint16(headOff + 18);
+    if (!upm) return null;
+    const typoAsc = v.getInt16(os2Off + 68);
+    const winAsc  = v.getUint16(os2Off + 74);
+    const fsSel   = v.getUint16(os2Off + 62);
+    const useTypo = !!(fsSel & 0x80); // bit 7
+    return (useTypo ? typoAsc : winAsc) / upm;
+  }
+
   async _getFontAscentRatio(family, ann) {
     const weight = ann.fontWeight || (ann.bold ? 700 : 400);
     const isBold = weight >= 600;
@@ -2193,14 +2219,14 @@ class OkemPDFEditor {
     if (this._ascentCache[cacheKey] !== undefined) return this._ascentCache[cacheKey];
     try {
       const path = LIB_FONTS[family]?.[styleKey] || LIB_FONTS.sans.regular;
-      const data = await fetch(path).then(r => r.arrayBuffer());
-      const fkFont = fontkit.create(new Uint8Array(data));
-      const ratio = fkFont.ascent / fkFont.unitsPerEm;
+      const buf = await fetch(path).then(r => r.arrayBuffer());
+      const ratio = this._parseFontAscentRatio(buf);
+      if (ratio == null) throw new Error("parse failed");
       this._ascentCache[cacheKey] = ratio;
       return ratio;
     } catch (e) {
       console.warn("Font metrics unavailable:", cacheKey, e);
-      return 0.9; // safe fallback
+      return 0.9;
     }
   }
 
