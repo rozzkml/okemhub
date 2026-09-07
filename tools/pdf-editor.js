@@ -1761,7 +1761,10 @@ class OkemPDFEditor {
 
     // Live-update style when user changes toolbar options while typing
     const toolOpts = this.els["tool-options"];
-    const onOptChange = () => applyStyle(this.getToolOptions());
+    const onOptChange = () => {
+      applyStyle(this.getToolOptions());
+      cancelCommit(); // keep alive while user is adjusting options
+    };
     toolOpts.addEventListener("input", onOptChange);
     toolOpts.addEventListener("change", onOptChange);
 
@@ -1770,9 +1773,25 @@ class OkemPDFEditor {
       this.textInputActive = true;
     });
 
+    // Delayed blur-commit: gives user time to click toolbar options
+    // without the textarea committing and disappearing
+    let blurTimer = null;
+    const scheduleCommit = () => {
+      clearTimeout(blurTimer);
+      blurTimer = setTimeout(() => {
+        if (!committed) { committed = true; commit(); }
+      }, 250);
+    };
+    const cancelCommit = () => clearTimeout(blurTimer);
+
+    // Cancel pending commit when user interacts with toolbar
+    toolOpts.addEventListener("pointerdown", cancelCommit);
+
     const cleanup = () => {
       toolOpts.removeEventListener("input", onOptChange);
       toolOpts.removeEventListener("change", onOptChange);
+      toolOpts.removeEventListener("pointerdown", cancelCommit);
+      clearTimeout(blurTimer);
     };
 
     const commit = () => {
@@ -1799,9 +1818,7 @@ class OkemPDFEditor {
     };
 
     let committed = false;
-    input.addEventListener("blur", () => {
-      if (!committed) { committed = true; commit(); }
-    });
+    input.addEventListener("blur", () => scheduleCommit());
     input.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
         committed = true;
