@@ -2335,7 +2335,7 @@ class OkemPDFEditor {
                   page.drawLine({ start: a, end: b, thickness, color, lineCap: PDFLib.LineCapStyle.Round });
                   if (type === "arrow") {
                     const ang = Math.atan2(b.y - a.y, b.x - a.x);
-                    const hl = Math.max(8, thickness * 4);
+                    const hl = 12; // match editor's fixed arrow head size
                     for (const off of [-Math.PI / 6, Math.PI / 6]) {
                       page.drawLine({
                         start: b,
@@ -2372,18 +2372,33 @@ class OkemPDFEditor {
                 let image;
                 try { image = await pdfDoc.embedPng(ann.dataUrl); }
                 catch { image = await pdfDoc.embedJpg(ann.dataUrl); }
+                // object-fit: contain — maintain aspect ratio, fit within box
+                const boxW = ann.w || 200, boxH = ann.h || 80;
+                const imgW = image.width || boxW, imgH = image.height || boxH;
+                const imgRatio = imgW / imgH, boxRatio = boxW / boxH;
+                let drawW, drawH;
+                if (imgRatio > boxRatio) { drawW = boxW; drawH = boxW / imgRatio; }
+                else { drawH = boxH; drawW = boxH * imgRatio; }
+                const offX = (boxW - drawW) / 2, offY = (boxH - drawH) / 2;
                 page.drawImage(image, this.placeBox(
-                  pageNum, ann.x, ann.y, ann.w || 200, ann.h || 80,
+                  pageNum, ann.x + offX, ann.y + offY, drawW, drawH,
                 ));
                 break;
               }
               case "link": {
                 const w = ann.w || 150, h = ann.h || 30;
                 const box = this.placeBox(pageNum, ann.x, ann.y, w, h);
+                // CSS: background: color-mix(in srgb, var(--accent) 8%, transparent)
+                page.drawRectangle({
+                  ...box,
+                  color: PDFLib.rgb(0.357, 0.545, 1.0),
+                  opacity: 0.08,
+                });
+                // CSS: border: 2px dashed var(--accent)
                 page.drawRectangle({
                   ...box,
                   borderColor: PDFLib.rgb(...this.hexToRgb("#5b8cff")),
-                  borderWidth: 1, opacity: 0.5,
+                  borderWidth: 2, opacity: 0.5,
                 });
                 const font = await this.getFont(pdfDoc, { bold: false, italic: false });
                 const linkSize = 9; // ~0.72rem at 96dpi
@@ -2425,7 +2440,7 @@ class OkemPDFEditor {
                 const ny = ann.y + 8 + noteSize * 0.9; // padding + ascent
                 const label = this.toPageSpace(nx, ny, pageNum);
                 page.drawText((ann.text || "").substring(0, 50), {
-                  x: label.x, y: label.y, size: 10, font, rotate: rot,
+                  x: label.x, y: label.y, size: noteSize, font, rotate: rot,
                   color: PDFLib.rgb(0.2, 0.2, 0.2),
                 });
                 break;
