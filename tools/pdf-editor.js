@@ -2227,11 +2227,11 @@ class OkemPDFEditor {
     return font;
   }
 
-  // Parse TTF/OTF font binary to extract the ascent ratio that CSS actually uses.
-  // CSS line-box model uses usWinAscent when USE_TYPO_METRICS is NOT set,
-  // and sTypoAscender when it IS set. fontkit's `ascent` returns hhea.ascent
-  // which can differ (e.g. Roboto: hhea=1900 vs usWin=2146 — a 12% gap!).
-  _parseFontAscentRatio(buf) {
+  // Parse TTF/OTF font binary to extract ascent AND descent ratios that CSS uses.
+  // CSS line-box model uses usWinAscent/usWinDescent when USE_TYPO_METRICS is NOT set,
+  // and sTypoAscender/sTypoDescender when it IS set.
+  // Returns { ascent, descent } as ratios of unitsPerEm.
+  _parseFontMetrics(buf) {
     const v = new DataView(buf);
     const numTables = v.getUint16(4);
     let os2Off = 0, headOff = 0;
@@ -2249,29 +2249,34 @@ class OkemPDFEditor {
     const upm = v.getUint16(headOff + 18);
     if (!upm) return null;
     const typoAsc = v.getInt16(os2Off + 68);
+    const typoDesc = v.getInt16(os2Off + 70);
     const winAsc  = v.getUint16(os2Off + 74);
+    const winDesc = v.getUint16(os2Off + 76);
     const fsSel   = v.getUint16(os2Off + 62);
     const useTypo = !!(fsSel & 0x80); // bit 7
-    return (useTypo ? typoAsc : winAsc) / upm;
+    return {
+      ascent:  (useTypo ? typoAsc  : winAsc)  / upm,
+      descent: (useTypo ? -typoDesc : winDesc) / upm, // always positive
+    };
   }
 
-  async _getFontAscentRatio(family, ann) {
+  async _getFontMetrics(family, ann) {
     const weight = ann.fontWeight || (ann.bold ? 700 : 400);
     const isBold = weight >= 600;
     const styleKey = ann.italic ? (isBold ? "boldItalic" : "italic") : (isBold ? "bold" : "regular");
     const cacheKey = family + ":" + styleKey;
-    if (!this._ascentCache) this._ascentCache = {};
-    if (this._ascentCache[cacheKey] !== undefined) return this._ascentCache[cacheKey];
+    if (!this._metricsCache) this._metricsCache = {};
+    if (this._metricsCache[cacheKey]) return this._metricsCache[cacheKey];
     try {
       const path = LIB_FONTS[family]?.[styleKey] || LIB_FONTS.sans.regular;
       const buf = await fetch(path).then(r => r.arrayBuffer());
-      const ratio = this._parseFontAscentRatio(buf);
-      if (ratio == null) throw new Error("parse failed");
-      this._ascentCache[cacheKey] = ratio;
-      return ratio;
+      const m = this._parseFontMetrics(buf);
+      if (!m) throw new Error("parse failed");
+      this._metricsCache[cacheKey] = m;
+      return m;
     } catch (e) {
       console.warn("Font metrics unavailable:", cacheKey, e);
-      return 0.9;
+      return { ascent: 0.9, descent: 0.2 };
     }
   }
 
@@ -2302,11 +2307,13 @@ class OkemPDFEditor {
                 const size = ann.fontSize || 12;
                 const spacing = ann.letterSpacing || 0;
                 // Baseline offset: distance from CSS element top to text baseline.
-                // In CSS, with line-height > 1, text is vertically centered in the
-                // line box, so the baseline sits at half-leading + font ascent.
-                const _ascent = await this._getFontAscentRatio(ann.font || "sans", ann);
+                // CSS content area = A + D (ascent + descent), NOT the em square.
+                // half-leading = (lineHeight * size - contentArea) / 2
+                // baseline = half-leading + ascent * size
+                // Simplified: (lineHeight * size + ascent * size - descent * size) / 2
+                const _m = await this._getFontMetrics(ann.font || "sans", ann);
                 const _lh = 1.2; // must match .annotation-text line-height
-                const baselineOffset = ((_lh - 1) / 2 + _ascent) * size;
+                const baselineOffset = ((_lh + _m.ascent - _m.descent) / 2) * size;
                 const p = this.toPageSpace(ann.x, ann.y + baselineOffset, pageNum);
                 const color = PDFLib.rgb(...this.hexToRgb(ann.color || "#000000"));
                 if (spacing !== 0 && (ann.text || "").length > 1) {
