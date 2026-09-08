@@ -468,9 +468,10 @@ class OkemPDFEditor {
         const ann = pageAnns.find(a => a.id === annId);
         if (ann) {
           e.stopPropagation();
+          e.preventDefault();
           this.selectAnnotation(ann, annEl);
           if (!annEl.classList.contains("canvas-ann-overlay")) {
-            this.startDrag(e, ann);
+            this.startDrag(e, ann, annEl);
           }
           if (ann.type === "image" || ann.type === "signature") {
             this.attachResize(ann, annEl, this.zoom);
@@ -1221,8 +1222,9 @@ class OkemPDFEditor {
     el.addEventListener("pointerdown", (e) => {
       if (this.tool === "select") {
         e.stopPropagation();
+        e.preventDefault(); // prevent contentEditable text selection from hijacking drag
         this.selectAnnotation(ann, el);
-        this.startDrag(e, ann);
+        this.startDrag(e, ann, el);
       }
     });
     layer.appendChild(el);
@@ -1269,8 +1271,9 @@ class OkemPDFEditor {
     el.addEventListener("pointerdown", (e) => {
       if (this.tool === "select") {
         e.stopPropagation();
+        e.preventDefault();
         this.selectAnnotation(ann, el);
-        this.startDrag(e, ann);
+        this.startDrag(e, ann, el);
         this.attachResize(ann, el, z);
       }
     });
@@ -1332,8 +1335,9 @@ class OkemPDFEditor {
     el.addEventListener("pointerdown", (e) => {
       if (this.tool === "select") {
         e.stopPropagation();
+        e.preventDefault();
         this.selectAnnotation(ann, el);
-        this.startDrag(e, ann);
+        this.startDrag(e, ann, el);
         this.attachResize(ann, el, z);
       }
     });
@@ -1361,7 +1365,9 @@ class OkemPDFEditor {
     el.addEventListener("pointerdown", (e) => {
       if (this.tool === "select") {
         e.stopPropagation();
-        this.startDrag(e, ann);
+        e.preventDefault();
+        this.selectAnnotation(ann, el);
+        this.startDrag(e, ann, el);
       }
     });
     layer.appendChild(el);
@@ -1377,8 +1383,9 @@ class OkemPDFEditor {
     el.addEventListener("pointerdown", (e) => {
       if (this.tool === "select") {
         e.stopPropagation();
+        e.preventDefault();
         this.selectAnnotation(ann, el);
-        this.startDrag(e, ann);
+        this.startDrag(e, ann, el);
       }
     });
     layer.appendChild(el);
@@ -1390,6 +1397,8 @@ class OkemPDFEditor {
     this.selectedAnnotation = ann;
     if (el) {
       el.classList.add("selected");
+      // Disable contentEditable so drag works without text selection interference
+      if (ann.type === "text") el.contentEditable = "false";
     } else {
       // Canvas annotation — create a DOM overlay for drag/resize/delete
       this.createCanvasOverlay(ann);
@@ -1398,7 +1407,11 @@ class OkemPDFEditor {
   }
 
   deselectAnnotation() {
-    document.querySelectorAll(".annotation-el.selected").forEach((el) => el.classList.remove("selected"));
+    document.querySelectorAll(".annotation-el.selected").forEach((el) => {
+      el.classList.remove("selected");
+      // Re-enable contentEditable for text annotations
+      if (el.classList.contains("annotation-text")) el.contentEditable = "true";
+    });
     document.querySelectorAll(".resize-handle").forEach((h) => h.remove());
     document.querySelectorAll(".canvas-ann-overlay").forEach((o) => o.remove());
     this.selectedAnnotation = null;
@@ -1693,7 +1706,7 @@ class OkemPDFEditor {
     return false;
   }
 
-  startDrag(e, ann) {
+  startDrag(e, ann, domEl) {
     const startX = e.clientX;
     const startY = e.clientY;
     const origX = ann.x || 0;
@@ -1704,7 +1717,9 @@ class OkemPDFEditor {
     const origStartY = ann.startY;
     const origEndX = ann.endX;
     const origEndY = ann.endY;
+    this._dragging = true;
     const onMove = (ev) => {
+      ev.preventDefault();
       const dx = (ev.clientX - startX) / this.zoom;
       const dy = (ev.clientY - startY) / this.zoom;
       ann.x = origX + dx;
@@ -1718,11 +1733,19 @@ class OkemPDFEditor {
         ann.endX = origEndX + dx;
         ann.endY = origEndY + dy;
       }
-      this.renderAnnotations();
+      // Direct DOM update avoids destroy/recreate cycle during drag
+      if (domEl && domEl.parentNode) {
+        domEl.style.left = ann.x * this.zoom + "px";
+        domEl.style.top = ann.y * this.zoom + "px";
+      } else {
+        this.renderAnnotations();
+      }
     };
     const onUp = () => {
+      this._dragging = false;
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
+      this.renderAnnotations();
       this.autoSave();
     };
     document.addEventListener("pointermove", onMove);
@@ -2319,13 +2342,17 @@ class OkemPDFEditor {
                 if (spacing !== 0 && (ann.text || "").length > 1) {
                   // Draw char-by-char with letter-spacing
                   const text = ann.text || "";
+                  const rad = (this.pageInfos[pageNum - 1].rotation || 0) * Math.PI / 180;
                   let curX = p.x;
+                  let curY = p.y;
                   for (let ci = 0; ci < text.length; ci++) {
                     page.drawText(text[ci], {
-                      x: curX, y: p.y, size, font, rotate: rot, color,
+                      x: curX, y: curY, size, font, rotate: rot, color,
                     });
                     const charW = font.widthOfTextAtSize(text[ci], size);
-                    curX += charW + spacing;
+                    // Advance in the rotated direction
+                    curX += (charW + spacing) * Math.cos(rad);
+                    curY += (charW + spacing) * Math.sin(rad);
                   }
                 } else {
                   page.drawText(ann.text || "", {
