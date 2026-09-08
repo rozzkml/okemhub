@@ -1538,7 +1538,10 @@ class OkemPDFEditor {
     } else {
       origX = ann.x; origY = ann.y;
     }
+    // Cache the overlay element for direct DOM updates during drag
+    const overlayEl = document.querySelector(`[data-ann-id="${ann.id}"].canvas-ann-overlay`);
     const onMove = (ev) => {
+      ev.preventDefault();
       const dx = (ev.clientX - startX) / this.zoom;
       const dy = (ev.clientY - startY) / this.zoom;
       if (isDraw) {
@@ -1547,11 +1550,18 @@ class OkemPDFEditor {
         ann.x = origX + dx;
         ann.y = origY + dy;
       }
-      this.renderAnnotations();
+      // Direct DOM update instead of full re-render
+      if (overlayEl && overlayEl.parentNode) {
+        overlayEl.style.left = (isDraw ? Math.min(...ann.points.map(p=>p.x)) : ann.x) * this.zoom + "px";
+        overlayEl.style.top = (isDraw ? Math.min(...ann.points.map(p=>p.y)) : ann.y) * this.zoom + "px";
+      } else {
+        this.renderAnnotations();
+      }
     };
     const onUp = () => {
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
+      this.renderAnnotations();
       this.autoSave();
     };
     document.addEventListener("pointermove", onMove);
@@ -1565,15 +1575,23 @@ class OkemPDFEditor {
     const origW = ann.w;
     const origH = ann.h;
     const onMove = (ev) => {
+      ev.preventDefault();
       const dw = (ev.clientX - startX) / this.zoom;
       const dh = (ev.clientY - startY) / this.zoom;
       ann.w = Math.max(10, origW + dw);
       ann.h = Math.max(10, origH + dh);
-      this.renderAnnotations();
+      // Direct DOM update instead of full re-render
+      if (overlayEl && overlayEl.parentNode) {
+        overlayEl.style.width = ann.w * this.zoom + "px";
+        overlayEl.style.height = ann.h * this.zoom + "px";
+      } else {
+        this.renderAnnotations();
+      }
     };
     const onUp = () => {
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
+      this.renderAnnotations();
       this.autoSave();
     };
     document.addEventListener("pointermove", onMove);
