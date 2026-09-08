@@ -412,6 +412,11 @@ body {
   cursor: move;
 }
 
+.annotation-whiteout {
+  background: #ffffff;
+  cursor: move;
+}
+
 .annotation-link {
   border: 2px dashed var(--accent);
   border-radius: 4px;

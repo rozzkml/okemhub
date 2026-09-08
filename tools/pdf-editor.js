@@ -651,6 +651,7 @@ class OkemPDFEditor {
 
   async goToPage(n) {
     if (n < 1 || n > this.totalPages) return;
+    this.deselectAnnotation();
     this.currentPage = n;
     await this.renderPage();
     document.querySelectorAll(".page-thumb").forEach((t) => {
@@ -1134,10 +1135,7 @@ class OkemPDFEditor {
           ctx.fillStyle = ann.color + "55";
           ctx.fillRect(ann.x * z, ann.y * z, ann.w * z, ann.h * z);
           break;
-        case "whiteout":
-          ctx.fillStyle = "#ffffff";
-          ctx.fillRect(ann.x * z, ann.y * z, ann.w * z, ann.h * z);
-          break;
+        case "whiteout": this.renderWhiteoutAnnotation(ann, layer, z); break;
         case "shape": this.renderShapeAnnotation(ann, ctx, z); break;
         case "signature": this.renderSignatureAnnotation(ann, layer, z); break;
         case "link": this.renderLinkAnnotation(ann, layer, z); break;
@@ -1151,7 +1149,10 @@ class OkemPDFEditor {
           el.classList.add("selected");
           if (ann.type === "text") el.contentEditable = "false";
         }
-        this.drawSelectionIndicator(ann, ctx, z);
+        // Draw canvas selection indicator only for canvas-rendered annotations
+        if (ann.type === "draw" || ann.type === "highlight" || ann.type === "shape") {
+          this.drawSelectionIndicator(ann, ctx, z);
+        }
       }
     });
   }
@@ -1165,10 +1166,7 @@ class OkemPDFEditor {
         ctx.fillStyle = ann.color + "55";
         ctx.fillRect(ann.x * z, ann.y * z, ann.w * z, ann.h * z);
       }
-      if (ann.type === "whiteout") {
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(ann.x * z, ann.y * z, ann.w * z, ann.h * z);
-      }
+      // whiteout is now a DOM element, not drawn on canvas
       if (ann.type === "shape") this.renderShapeAnnotation(ann, ctx, z);
     });
   }
@@ -1323,6 +1321,25 @@ class OkemPDFEditor {
     }
   }
 
+  renderWhiteoutAnnotation(ann, layer, z) {
+    const el = document.createElement("div");
+    el.className = "annotation-el annotation-whiteout";
+    el.style.left = ann.x * z + "px";
+    el.style.top = ann.y * z + "px";
+    el.style.width = ann.w * z + "px";
+    el.style.height = ann.h * z + "px";
+    el.dataset.annId = ann.id;
+    el.addEventListener("pointerdown", (e) => {
+      if (this.tool === "select") {
+        e.stopPropagation();
+        e.preventDefault();
+        this.selectAnnotation(ann, el);
+        this.startDrag(e, ann, el);
+      }
+    });
+    layer.appendChild(el);
+  }
+
   renderSignatureAnnotation(ann, layer, z) {
     const el = document.createElement("div");
     el.className = "annotation-el";
@@ -1422,6 +1439,12 @@ class OkemPDFEditor {
     document.querySelectorAll(".canvas-ann-overlay").forEach((o) => o.remove());
     this.selectedAnnotation = null;
     this.hideDeleteButton();
+    // Clear canvas selection indicators (dashed border)
+    const ctx = this.els["overlay-canvas"]?.getContext("2d");
+    if (ctx) {
+      ctx.clearRect(0, 0, this.els["overlay-canvas"].width, this.els["overlay-canvas"].height);
+      this.drawTempAnnotations(ctx);
+    }
   }
 
   showDeleteButton() {
@@ -2195,6 +2218,7 @@ class OkemPDFEditor {
     if (action.type === "add") {
       const pageAnns = this.annotations[action.page];
       if (pageAnns) { const idx = pageAnns.indexOf(action.annotation); if (idx !== -1) pageAnns.splice(idx, 1); }
+      if (this.selectedAnnotation === action.annotation) this.deselectAnnotation();
     } else if (action.type === "remove") {
       if (!this.annotations[action.page]) this.annotations[action.page] = [];
       this.annotations[action.page].push(action.annotation);
@@ -2216,6 +2240,7 @@ class OkemPDFEditor {
     } else if (action.type === "remove") {
       const pageAnns = this.annotations[action.page];
       if (pageAnns) { const idx = pageAnns.indexOf(action.annotation); if (idx !== -1) pageAnns.splice(idx, 1); }
+      if (this.selectedAnnotation === action.annotation) this.deselectAnnotation();
     } else if (action.type === "edit") {
       action.annotation.text = action.newText;
     }
