@@ -1145,6 +1145,12 @@ class OkemPDFEditor {
       }
       // Draw selection indicator for canvas annotations
       if (this.selectedAnnotation && this.selectedAnnotation.id === ann.id) {
+        // Re-apply selected class to DOM annotations after re-render
+        const el = document.querySelector(`[data-ann-id="${ann.id}"]`);
+        if (el && !el.classList.contains("canvas-ann-overlay")) {
+          el.classList.add("selected");
+          if (ann.type === "text") el.contentEditable = "false";
+        }
         this.drawSelectionIndicator(ann, ctx, z);
       }
     });
@@ -1613,6 +1619,23 @@ class OkemPDFEditor {
       this._fileName = session.fileName || "document.pdf";
       this._historyId = session.historyId || null;
       this.fontCache = {};
+
+      // Rebind undo/redo annotation references to the restored objects
+      const _annMap = {};
+      for (const list of Object.values(this.annotations)) {
+        for (const a of list) _annMap[a.id] = a;
+      }
+      for (const stack of [this.undoStack, this.redoStack]) {
+        for (const action of stack) {
+          if (action.annotation && action.annotation.id) {
+            const real = _annMap[action.annotation.id];
+            if (real) {
+              action.annotation = real;
+              action.page = real.page;
+            }
+          }
+        }
+      }
 
       for (let i = 1; i <= this.totalPages; i++) {
         const page = await this.pdfDoc.getPage(i);
@@ -2083,6 +2106,23 @@ class OkemPDFEditor {
       this.currentPage = data.currentPage || 1;
       this.zoom = data.zoom || 1.5;
       this.fontCache = {};
+
+      // Rebind undo/redo annotation references to the loaded objects
+      const _annMap = {};
+      for (const list of Object.values(this.annotations)) {
+        for (const a of list) _annMap[a.id] = a;
+      }
+      for (const stack of [this.undoStack, this.redoStack]) {
+        for (const action of stack) {
+          if (action.annotation && action.annotation.id) {
+            const real = _annMap[action.annotation.id];
+            if (real) {
+              action.annotation = real;
+              action.page = real.page;
+            }
+          }
+        }
+      }
 
       for (let i = 1; i <= this.totalPages; i++) {
         const page = await this.pdfDoc.getPage(i);
